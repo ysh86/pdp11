@@ -17,6 +17,17 @@ typedef struct instruction_tag {
     int operandNum;
 } instruction_t;
 
+char *toRegName[] = {
+    "r0",
+    "r1",
+    "r2",
+    "r3",
+    "r4",
+    "r5",
+    "sp", //"r6",
+    "pc", //"r7",
+};
+
 instruction_t doubleOperand0[] = {
     {"", 0},     // 0 000b: singleOperand0[], conditionalBranch0[], conditionCode[]
     {"mov", 4},  // 0 001b:
@@ -34,7 +45,7 @@ instruction_t doubleOperand0[] = {
     {"bicb", 4}, // 1 100b:
     {"bisb", 4}, // 1 101b:
     {"sub", 4},  // 1 110b:
-    {"", 0},     // 1 111b: dummy
+    {"", 4},     // 1 111b: floatingPoint[]
 };
 
 instruction_t doubleOperand1[] = {
@@ -43,8 +54,8 @@ instruction_t doubleOperand1[] = {
     {"ash", 3},  // 0 111 010b:
     {"ashc", 3}, // 0 111 011b:
     {"xor", 3},  // 0 111 100b:
-    {"", 0},     // 0 111 101b: float
-    {"", 0},     // 0 111 110b: system
+    {NULL, 0},   // 0 111 101b: float
+    {NULL, 0},   // 0 111 110b: system
     {"sob", 3},  // 0 111 111b:
 };
 
@@ -77,6 +88,15 @@ instruction_t singleOperand0[] = {
     {"mfpi", 2}, // 0 000 110 101b:
     {"mtpi", 2}, // 0 000 110 110b:
     {"sxt", 2},  // 0 000 110 111b:
+    // 007?
+    {NULL, 0},  // 0 000 111 000b:
+    {NULL, 0},  // 0 000 111 001b:
+    {NULL, 0},  // 0 000 111 010b:
+    {NULL, 0},  // 0 000 111 011b:
+    {NULL, 0},  // 0 000 111 100b:
+    {NULL, 0},  // 0 000 111 101b:
+    {NULL, 0},  // 0 000 111 110b:
+    {NULL, 0},  // 0 000 111 111b:
 };
 
 instruction_t singleOperand1[] = {
@@ -107,6 +127,15 @@ instruction_t singleOperand1[] = {
     {"mfpd", 2}, // 1 000 110 101b:
     {"mtpd", 2}, // 1 000 110 110b:
     {"mfps", 2}, // 1 000 110 111b:
+    // 107?
+    {NULL, 0},  // 1 000 111 000b:
+    {NULL, 0},  // 1 000 111 001b:
+    {NULL, 0},  // 1 000 111 010b:
+    {NULL, 0},  // 1 000 111 011b:
+    {NULL, 0},  // 1 000 111 100b:
+    {NULL, 0},  // 1 000 111 101b:
+    {NULL, 0},  // 1 000 111 110b:
+    {NULL, 0},  // 1 000 111 111b:
 };
 
 instruction_t conditionalBranch0[] = {
@@ -132,9 +161,31 @@ instruction_t conditionalBranch1[] = {
 };
 
 instruction_t conditionCode[] = {
-    {"", 0}, // 0 000 000 010 100 000b:
+    {"conconcondition", 0}, // 0 000 000 010 100 000b:
 
     {"", 0}, // 0 000 000 010 110 000b:
+};
+
+instruction_t floatingPoint[] = {
+    {NULL, 0},   // 1 111 000 000 000 000b:
+    {NULL, 0},   // 1 111 000 000 000 001b:
+    {NULL, 0},   // 1 111 000 000 000 010b:
+    {NULL, 0},   // 1 111 000 000 000 011b:
+
+    {NULL, 0},   // 1 111 000 000 000 100b:
+    {NULL, 0},   // 1 111 000 000 000 101b:
+    {NULL, 0},   // 1 111 000 000 000 110b:
+    {NULL, 0},   // 1 111 000 000 000 111b:
+
+    {NULL, 0},   // 1 111 000 000 001 000b:
+    {"setd", 0}, // 1 111 000 000 001 001b:
+    {NULL, 0},   // 1 111 000 000 001 010b:
+    {NULL, 0},   // 1 111 000 000 001 011b:
+
+    {NULL, 0},   // 1 111 000 000 001 100b:
+    {NULL, 0},   // 1 111 000 000 001 101b:
+    {NULL, 0},   // 1 111 000 000 001 110b:
+    {NULL, 0},   // 1 111 000 000 001 111b:
 };
 
 typedef struct machine_t_tag {
@@ -145,6 +196,12 @@ typedef struct machine_t_tag {
 
     // memory
     uint8_t virtualMemory[64 * 1024];
+    uint16_t textStart;
+    uint16_t textEnd;
+    uint16_t dataStart;
+    uint16_t dataEnd;
+    uint16_t bssStart;
+    uint16_t bssEnd;
 
     // regs
     uint16_t r0;
@@ -212,10 +269,17 @@ int main(int argc, char *argv[]) {
     //////////////////////////
     // prepare
     //////////////////////////
+    machine.textStart = 0;
+    machine.textEnd = machine.textStart + machine.aoutHeader[1];
+    machine.dataStart = machine.textEnd;
+    machine.dataEnd = machine.dataStart + machine.aoutHeader[2];
+    machine.bssStart = machine.dataEnd;
+    machine.bssEnd = machine.bssStart + machine.aoutHeader[3];
+
     // TODO: validate
     assert(machine.aoutHeader[0] == 0x0107);
     assert(machine.aoutHeader[1] > 0);
-    assert(0 + machine.aoutHeader[1] + machine.aoutHeader[2] + machine.aoutHeader[3] <= 0xfffe);
+    assert(machine.bssEnd <= 0xfffe);
 
     printf("magic:     0x%04x\n", machine.aoutHeader[0]);
     printf("text size: 0x%04x\n", machine.aoutHeader[1]);
@@ -227,10 +291,7 @@ int main(int argc, char *argv[]) {
     printf("flag:      0x%04x\n", machine.aoutHeader[7]);
 
     // bss
-    size_t begin = 0 + machine.aoutHeader[1] + machine.aoutHeader[2];
-    memset(&machine.virtualMemory[begin], 0, machine.aoutHeader[3]);
-
-    // TODO: heap pointer?
+    memset(&machine.virtualMemory[machine.bssStart], 0, machine.aoutHeader[3]);
 
     // clear regs
     machine.r0 = 0;
@@ -240,20 +301,24 @@ int main(int argc, char *argv[]) {
     machine.r4 = 0;
     machine.r5 = 0;
     machine.sp = 0xfffe;
-    machine.pc = 0;
+    machine.pc = machine.textStart;
     machine.psw = 0;
 
     // push args
     for (int i = 1; i < argc; i++) {
-        argv[i];
+        //argv[i];
     }
 
     //////////////////////////
     // run
     //////////////////////////
     while (1) {
+        // TODO: debug
+        assert(machine.pc < machine.textEnd);
+
         // fetch
         uint16_t bin = machine.virtualMemory[machine.pc] | (machine.virtualMemory[machine.pc + 1] << 8);
+        machine.pc += 2;
 
         // decode
         uint16_t op = bin >> 12; // 4 bits
@@ -263,24 +328,97 @@ int main(int argc, char *argv[]) {
         uint8_t reg1 = bin & 0x0007;
         uint8_t offset = bin & 0x00ff; // 8 bits
         if (op == 7) {
+            // doubleOperand1
             op = bin >> 9; // (4+3) bits
+            printf("pc:%04x sp:%04x bin:%06o op:%03o mode1:%o, %s %s %s\n",
+                machine.pc - 2,
+                machine.sp,
+                bin,
+                op,
+                mode1,
+                doubleOperand1[op&7].mnemonic,
+                toRegName[reg0],
+                toRegName[reg1]);
+            continue;
         }
         if (op == 0 || op == 8) {
-            if (bin & 0x0800) {
-                // Single-operand
-                op = bin >> 6; // (1+4+5) bits
+            if (mode0 & 4) {
+                // singleOperand
+                instruction_t *table;
+                if (op == 0) {
+                    table = singleOperand0;
+                } else {
+                    table = singleOperand1;
+                }
+                op = ((mode0 & 3) << 3) | reg0; // (2+3) bits
+                printf("pc:%04x sp:%04x bin:%06o op:%02o mode1:%o, %s %s\n",
+                    machine.pc - 2,
+                    machine.sp,
+                    bin,
+                    op,
+                    mode1,
+                    table[op].mnemonic,
+                    toRegName[reg1]);
+                continue;
             } else {
-                // Conditional branch
-                op = bin >> 8; // (1+4+3) bits
+                // conditionalBranch
+                instruction_t *table;
+                if (op == 0) {
+                    table = conditionalBranch0;
+                    op = ((mode0 & 3) << 1) | (reg0 >> 2); // (2+1) bits
+                    if (op == 0) {
+                        // conditionCode
+                        table = conditionCode;
+                    }
+                } else {
+                    table = conditionalBranch1;
+                    op = ((mode0 & 3) << 1) | (reg0 >> 2); // (2+1) bits
+                }
+                printf("pc:%04x sp:%04x bin:%06o op:%02o, %s %03o\n",
+                    machine.pc - 2,
+                    machine.sp,
+                    bin,
+                    op,
+                    table[op].mnemonic,
+                    offset);
+                continue;
             }
+
+            // TODO: unknown op
+            printf("pc:%04x sp:%04x bin:%06o op:%03o asm:%s\n", machine.pc, machine.sp, bin, op, "???");
+            assert(0);
+
+            continue;
         }
-        printf("pc:%04x sp:%04x op:%02x asm:%s\n", machine.pc, machine.sp, op, "???");
-
-        // TODO: debug
-        //assert(machine.pc < 0xfffe);
-        assert(machine.pc < 0x2000);
-
-        machine.pc += 2;
+        if (op == 15) {
+            // floatingPoint
+            op = offset & 0xf;
+            printf("pc:%04x sp:%04x bin:%06o op:%02o mode0:%o mode1:%o, %s\n",// %s %s\n",
+                machine.pc - 2,
+                machine.sp,
+                bin,
+                op,
+                mode0,
+                mode1,
+                floatingPoint[op].mnemonic);
+                //toRegName[reg0],
+                //toRegName[reg1]);
+            continue;
+        }
+        {
+            // doubleOperand0
+            printf("pc:%04x sp:%04x bin:%06o op:%02o mode0:%o mode1:%o, %s %s %s\n",
+                machine.pc - 2,
+                machine.sp,
+                bin,
+                op,
+                mode0,
+                mode1,
+                doubleOperand0[op].mnemonic,
+                toRegName[reg0],
+                toRegName[reg1]);
+            continue;
+        }
     }
 
     return EXIT_SUCCESS;
