@@ -61,14 +61,14 @@ instruction_t doubleOperand1[] = {
 
 instruction_t singleOperand0[] = {
     // 004r
-    {"jsr", 3},  // 0 000 100
-    {"jsr", 3},  // 0 000 100
-    {"jsr", 3},  // 0 000 100
-    {"jsr", 3},  // 0 000 100
-    {"jsr", 3},  // 0 000 100
-    {"jsr", 3},  // 0 000 100
-    {"jsr", 3},  // 0 000 100
-    {"jsr", 3},  // 0 000 100
+    {"jsr r0", 2},  // 0 000 100
+    {"jsr r1", 2},  // 0 000 100
+    {"jsr r2", 2},  // 0 000 100
+    {"jsr r3", 2},  // 0 000 100
+    {"jsr r4", 2},  // 0 000 100
+    {"jsr r5", 2},  // 0 000 100
+    {"jsr sp", 2},  // 0 000 100
+    {"jsr pc", 2},  // 0 000 100
 
     // 005?
     {"clr", 2},  // 0 000 101 000b:
@@ -249,13 +249,14 @@ uint16_t fetch(machine_t *pm) {
 }
 
 void push(machine_t *pm, uint16_t value) {
-    pm->virtualMemory[pm->sp] = value;
     pm->sp -= 2;
+    pm->virtualMemory[pm->sp] = value;
 }
 
 uint16_t pop(machine_t *pm) {
+    uint16_t value = pm->virtualMemory[pm->sp];
     pm->sp += 2;
-    return pm->virtualMemory[pm->sp];
+    return value;
 }
 
 void operand_string(machine_t *pm, char *str, size_t size, uint8_t mode, uint8_t reg) {
@@ -274,7 +275,7 @@ void operand_string(machine_t *pm, char *str, size_t size, uint8_t mode, uint8_t
         } else {
             // pc
             word = fetch(pm);
-            snprintf(str, size, "#%06o", word);
+            snprintf(str, size, "#%06o / 0x%04x", word, word);
         }
         break;
     case 3:
@@ -283,7 +284,7 @@ void operand_string(machine_t *pm, char *str, size_t size, uint8_t mode, uint8_t
         } else {
             // pc
             word = fetch(pm);
-            snprintf(str, size, "@#%06o", word);
+            snprintf(str, size, "@#%06o / 0x%04x", word, word);
         }
         break;
     case 4:
@@ -298,8 +299,7 @@ void operand_string(machine_t *pm, char *str, size_t size, uint8_t mode, uint8_t
             snprintf(str, size, "%d(%s)", word, rn);
         } else {
             // pc
-            word = fetch(pm);
-            snprintf(str, size, "%06o", word);
+            snprintf(str, size, "%06o / 0x%04x", word, word);
         }
         break;
     case 7:
@@ -308,8 +308,7 @@ void operand_string(machine_t *pm, char *str, size_t size, uint8_t mode, uint8_t
             snprintf(str, size, "@%d(%s)", word, rn);
         } else {
             // pc
-            word = fetch(pm);
-            snprintf(str, size, "@%06o", word);
+            snprintf(str, size, "@%06o / 0x%04x", word, word);
         }
         break;
     default:
@@ -393,7 +392,7 @@ int main(int argc, char *argv[]) {
     machine.r3 = 0;
     machine.r4 = 0;
     machine.r5 = 0;
-    machine.sp = 0xfffe;
+    machine.sp = 0;
     machine.pc = machine.textStart;
     machine.psw = 0;
 
@@ -410,6 +409,7 @@ int main(int argc, char *argv[]) {
         assert(machine.pc < machine.textEnd);
 
         // fetch
+        uint16_t addr = machine.pc;
         uint16_t bin = fetch(&machine);
 
         // decode
@@ -419,8 +419,8 @@ int main(int argc, char *argv[]) {
         uint8_t mode1 = (bin & 0x0038) >> 3;
         uint8_t reg1 = bin & 0x0007;
         uint8_t offset = bin & 0x00ff; // 8 bits
-        char operand0[16];
-        char operand1[16];
+        char operand0[32];
+        char operand1[32];
         if (op == 0 || op == 8) {
             if (mode0 & 4) {
                 // singleOperand
@@ -432,8 +432,9 @@ int main(int argc, char *argv[]) {
                 }
                 op = ((mode0 & 3) << 3) | reg0; // (2+3) bits
                 operand_string(&machine, operand1, sizeof(operand1), mode1, reg1);
-                printf("pc:%04x sp:%04x bin:%06o, %s %s\n",
-                    machine.pc - 2,
+                printf("%04x %04x: pc:%04x sp:%04x bin:%06o, %s %s\n",
+                    addr, bin,
+                    machine.pc,
                     machine.sp,
                     bin,
                     table[op].mnemonic,
@@ -458,7 +459,13 @@ int main(int argc, char *argv[]) {
                             op = 13;
                         } else {
                             // TODO: unknown op
-                            printf("pc:%04x sp:%04x bin:%06o op:%03o asm:%s\n", machine.pc, machine.sp, bin, op, "???");
+                            printf("%04x %04x: pc:%04x sp:%04x bin:%06o op:%03o, %s\n",
+                                addr, bin,
+                                machine.pc,
+                                machine.sp,
+                                bin,
+                                op,
+                                "???");
                             continue;
                             //assert(0);
                         }
@@ -467,8 +474,9 @@ int main(int argc, char *argv[]) {
                     table = conditionalBranch1;
                     op = ((mode0 & 3) << 1) | (reg0 >> 2); // (2+1) bits
                 }
-                printf("pc:%04x sp:%04x bin:%06o op:%02o, %s %03o\n",
-                    machine.pc - 2,
+                printf("%04x %04x: pc:%04x sp:%04x bin:%06o op:%02o, %s %03o\n",
+                    addr, bin,
+                    machine.pc,
                     machine.sp,
                     bin,
                     op,
@@ -478,7 +486,13 @@ int main(int argc, char *argv[]) {
             }
 
             // TODO: unknown op
-            printf("pc:%04x sp:%04x bin:%06o op:%03o asm:%s\n", machine.pc, machine.sp, bin, op, "???");
+            printf("%04x %04x: pc:%04x sp:%04x bin:%06o op:%03o, %s\n",
+                addr, bin,
+                machine.pc,
+                machine.sp,
+                bin,
+                op,
+                "???");
             assert(0);
 
             continue;
@@ -487,8 +501,9 @@ int main(int argc, char *argv[]) {
             if (mode0 != 5) {
                 // doubleOperand1
                 op = bin >> 9; // (4+3) bits
-                printf("pc:%04x sp:%04x bin:%06o op:%03o mode1:%o, %s %s %s\n",
-                    machine.pc - 2,
+                printf("%04x %04x: pc:%04x sp:%04x bin:%06o op:%03o mode1:%o, %s %s %s\n",
+                    addr, bin,
+                    machine.pc,
                     machine.sp,
                     bin,
                     op,
@@ -499,8 +514,9 @@ int main(int argc, char *argv[]) {
             } else {
                 // floatingPoint0
                 op = bin >> 9; // (4+3) bits
-                printf("pc:%04x sp:%04x bin:%06o op:%03o mode1:%o, %s %s %s\n",
-                    machine.pc - 2,
+                printf("%04x %04x: pc:%04x sp:%04x bin:%06o op:%03o mode1:%o, %s %s %s\n",
+                    addr, bin,
+                    machine.pc,
                     machine.sp,
                     bin,
                     op,
@@ -514,8 +530,9 @@ int main(int argc, char *argv[]) {
         if (op == 15) {
             // floatingPoint1
             op = offset & 0xf;
-            printf("pc:%04x sp:%04x bin:%06o op:%02o mode0:%o mode1:%o, %s\n",// %s %s\n",
-                machine.pc - 2,
+            printf("%04x %04x: pc:%04x sp:%04x bin:%06o op:%02o mode0:%o mode1:%o, %s\n",// %s %s\n",
+                addr, bin,
+                machine.pc,
                 machine.sp,
                 bin,
                 op,
@@ -530,8 +547,9 @@ int main(int argc, char *argv[]) {
             // doubleOperand0
             operand_string(&machine, operand0, sizeof(operand0), mode0, reg0);
             operand_string(&machine, operand1, sizeof(operand1), mode1, reg1);
-            printf("pc:%04x sp:%04x bin:%06o, %s %s %s\n",
-                machine.pc - 2,
+            printf("%04x %04x: pc:%04x sp:%04x bin:%06o, %s %s %s\n",
+                addr, bin,
+                machine.pc,
                 machine.sp,
                 bin,
                 doubleOperand0[op].mnemonic,
