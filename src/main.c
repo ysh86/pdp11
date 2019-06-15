@@ -29,14 +29,14 @@ char *toRegName[] = {
 };
 
 instruction_t doubleOperand0[] = {
-    {"", 0},     // 0 000b: singleOperand0[], conditionalBranch0[], conditionCode[]
+    {"", 0},     // 0 000b: singleOperand0[], conditionalBranch0[]
     {"mov", 4},  // 0 001b:
     {"cmp", 4},  // 0 010b:
     {"bit", 4},  // 0 011b:
     {"bic", 4},  // 0 100b:
     {"bis", 4},  // 0 101b:
     {"add", 4},  // 0 110b:
-    {"", 3},     // 0 111b: doubleOperand1[]
+    {"", 3},     // 0 111b: doubleOperand1[], floatingPoint0[]
 
     {"", 0},     // 1 000b: singleOperand1[], conditionalBranch1[]
     {"movb", 4}, // 1 001b:
@@ -45,7 +45,7 @@ instruction_t doubleOperand0[] = {
     {"bicb", 4}, // 1 100b:
     {"bisb", 4}, // 1 101b:
     {"sub", 4},  // 1 110b:
-    {"", 4},     // 1 111b: floatingPoint[]
+    {"", 4},     // 1 111b: floatingPoint1[]
 };
 
 instruction_t doubleOperand1[] = {
@@ -54,22 +54,22 @@ instruction_t doubleOperand1[] = {
     {"ash", 3},  // 0 111 010b:
     {"ashc", 3}, // 0 111 011b:
     {"xor", 3},  // 0 111 100b:
-    {NULL, 0},   // 0 111 101b: float
-    {NULL, 0},   // 0 111 110b: system
+    {"", 0},     // 0 111 101b: floatingPoint0[]
+    {NULL, 0},   // 0 111 110b: system?
     {"sob", 3},  // 0 111 111b:
 };
 
 instruction_t singleOperand0[] = {
-    // TODO: 0003 swab
     // 004r
-    {"jsr", 2},  // 0 000 100 000b:
-    {"jsr", 2},  // 0 000 100 001b:
-    {"jsr", 2},  // 0 000 100 010b:
-    {"jsr", 2},  // 0 000 100 011b:
-    {"jsr", 2},  // 0 000 100 100b:
-    {"jsr", 2},  // 0 000 100 101b:
-    {"jsr", 2},  // 0 000 100 110b:
-    {"jsr", 2},  // 0 000 100 111b:
+    {"jsr", 3},  // 0 000 100
+    {"jsr", 3},  // 0 000 100
+    {"jsr", 3},  // 0 000 100
+    {"jsr", 3},  // 0 000 100
+    {"jsr", 3},  // 0 000 100
+    {"jsr", 3},  // 0 000 100
+    {"jsr", 3},  // 0 000 100
+    {"jsr", 3},  // 0 000 100
+
     // 005?
     {"clr", 2},  // 0 000 101 000b:
     {"com", 2},  // 0 000 101 001b:
@@ -105,10 +105,11 @@ instruction_t singleOperand1[] = {
     {"emt", 2},  // 1 000 100 001b:
     {"emt", 2},  // 1 000 100 010b:
     {"emt", 2},  // 1 000 100 011b:
-    {"emt", 2},  // 1 000 100 100b:
-    {"emt", 2},  // 1 000 100 101b:
-    {"emt", 2},  // 1 000 100 110b:
-    {"emt", 2},  // 1 000 100 111b:
+    {"trap", 2}, // 1 000 100 100b:
+    {"trap", 2}, // 1 000 100 101b:
+    {"trap", 2}, // 1 000 100 110b:
+    {"trap", 2}, // 1 000 100 111b:
+
     // 105?
     {"clrb", 2}, // 1 000 101 000b:
     {"comb", 2}, // 1 000 101 001b:
@@ -139,7 +140,7 @@ instruction_t singleOperand1[] = {
 };
 
 instruction_t conditionalBranch0[] = {
-    {"", 0},     // 0 000 000 0b: system instructions?, conditionCode[]
+    {"", 0},     // 0 000 000 0b: systemMisc[]
     {"br", 1},   // 0 000 000 1b:
     {"bne", 1},  // 0 000 001 0b:
     {"beq", 1},  // 0 000 001 1b:
@@ -160,13 +161,39 @@ instruction_t conditionalBranch1[] = {
     {"bcs or blo", 1},  // 1 000 011 1b:
 };
 
-instruction_t conditionCode[] = {
-    {"conconcondition", 0}, // 0 000 000 010 100 000b:
+instruction_t systemMisc[] = {
+    {"halt", 0},  // 0 000 000 000 000 000b:
+    {"wait", 0},  // 0 000 000 000 000 001b:
+    {"rti", 0},   // 0 000 000 000 000 010b:
+    {"bpt", 0},   // 0 000 000 000 000 011b:
+    {"iot", 0},   // 0 000 000 000 000 100b:
+    {"reset", 0}, // 0 000 000 000 000 101b:
+    {"rtt", 0},   // 0 000 000 000 000 110b:
+    {NULL, 0},    // 0 000 000 000 000 111b:
 
-    {"", 0}, // 0 000 000 010 110 000b:
+    {"jmp", 2},   // 0 000 000 001b:
+
+    // subroutine, condition
+    {"rts", 1},   // 0 000 000 010 000b:
+    {NULL, 0},    // 0 000 000 010 010b:
+    {"clear", 0}, // 0 000 000 010 100 000b:
+    {"set", 0},   // 0 000 000 010 110 000b:
+
+    {"swab", 2},  // 0 000 000 011b:
 };
 
-instruction_t floatingPoint[] = {
+instruction_t floatingPoint0[] = {
+    {"fadd", 1},   // 0 111 101 000b:
+    {"fsub", 1},   // 0 111 101 001b:
+    {"fmul", 1},   // 0 111 101 010b:
+    {"fdiv", 1},   // 0 111 101 011b:
+    {NULL, 0},
+    {NULL, 0},
+    {NULL, 0},
+    {NULL, 0},
+};
+
+instruction_t floatingPoint1[] = {
     {NULL, 0},   // 1 111 000 000 000 000b:
     {NULL, 0},   // 1 111 000 000 000 001b:
     {NULL, 0},   // 1 111 000 000 000 010b:
@@ -327,20 +354,6 @@ int main(int argc, char *argv[]) {
         uint8_t mode1 = (bin & 0x0038) >> 3;
         uint8_t reg1 = bin & 0x0007;
         uint8_t offset = bin & 0x00ff; // 8 bits
-        if (op == 7) {
-            // doubleOperand1
-            op = bin >> 9; // (4+3) bits
-            printf("pc:%04x sp:%04x bin:%06o op:%03o mode1:%o, %s %s %s\n",
-                machine.pc - 2,
-                machine.sp,
-                bin,
-                op,
-                mode1,
-                doubleOperand1[op&7].mnemonic,
-                toRegName[reg0],
-                toRegName[reg1]);
-            continue;
-        }
         if (op == 0 || op == 8) {
             if (mode0 & 4) {
                 // singleOperand
@@ -367,8 +380,22 @@ int main(int argc, char *argv[]) {
                     table = conditionalBranch0;
                     op = ((mode0 & 3) << 1) | (reg0 >> 2); // (2+1) bits
                     if (op == 0) {
-                        // conditionCode
-                        table = conditionCode;
+                        // systemMisc
+                        table = systemMisc;
+                        if (reg0 == 0 && mode1 == 0) {
+                            op = reg1;
+                        } else if (reg0 == 1) {
+                            op = 8;
+                        } else if (reg0 == 2) {
+                            op = 9 + (mode1 >> 1);
+                        } else if (reg0 == 3) {
+                            op = 13;
+                        } else {
+                            // TODO: unknown op
+                            printf("pc:%04x sp:%04x bin:%06o op:%03o asm:%s\n", machine.pc, machine.sp, bin, op, "???");
+                            continue;
+                            //assert(0);
+                        }
                     }
                 } else {
                     table = conditionalBranch1;
@@ -390,8 +417,36 @@ int main(int argc, char *argv[]) {
 
             continue;
         }
+        if (op == 7) {
+            if (mode0 != 5) {
+                // doubleOperand1
+                op = bin >> 9; // (4+3) bits
+                printf("pc:%04x sp:%04x bin:%06o op:%03o mode1:%o, %s %s %s\n",
+                    machine.pc - 2,
+                    machine.sp,
+                    bin,
+                    op,
+                    mode1,
+                    doubleOperand1[op&7].mnemonic,
+                    toRegName[reg0],
+                    toRegName[reg1]);
+            } else {
+                // floatingPoint0
+                op = bin >> 9; // (4+3) bits
+                printf("pc:%04x sp:%04x bin:%06o op:%03o mode1:%o, %s %s %s\n",
+                    machine.pc - 2,
+                    machine.sp,
+                    bin,
+                    op,
+                    mode1,
+                    floatingPoint0[reg0].mnemonic,
+                    toRegName[reg0],
+                    toRegName[reg1]);
+            }
+            continue;
+        }
         if (op == 15) {
-            // floatingPoint
+            // floatingPoint1
             op = offset & 0xf;
             printf("pc:%04x sp:%04x bin:%06o op:%02o mode0:%o mode1:%o, %s\n",// %s %s\n",
                 machine.pc - 2,
@@ -400,7 +455,7 @@ int main(int argc, char *argv[]) {
                 op,
                 mode0,
                 mode1,
-                floatingPoint[op].mnemonic);
+                floatingPoint1[op].mnemonic);
                 //toRegName[reg0],
                 //toRegName[reg1]);
             continue;
