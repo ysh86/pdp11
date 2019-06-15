@@ -242,6 +242,12 @@ typedef struct machine_t_tag {
     uint16_t psw;
 } machine_t;
 
+uint16_t fetch(machine_t *pm) {
+    uint16_t bin = pm->virtualMemory[pm->pc] | (pm->virtualMemory[pm->pc + 1] << 8);
+    pm->pc += 2;
+    return bin;
+}
+
 void push(machine_t *pm, uint16_t value) {
     pm->virtualMemory[pm->sp] = value;
     pm->sp -= 2;
@@ -250,6 +256,66 @@ void push(machine_t *pm, uint16_t value) {
 uint16_t pop(machine_t *pm) {
     pm->sp += 2;
     return pm->virtualMemory[pm->sp];
+}
+
+void operand_string(machine_t *pm, char *str, size_t size, uint8_t mode, uint8_t reg) {
+    int16_t word = 0;
+    const char *rn = toRegName[reg];
+    switch (mode) {
+    case 0:
+        snprintf(str, size, "%s", rn);
+        break;
+    case 1:
+        snprintf(str, size, "(%s)", rn);
+        break;
+    case 2:
+        if (reg != 7) {
+            snprintf(str, size, "(%s)+", rn);
+        } else {
+            // pc
+            word = fetch(pm);
+            snprintf(str, size, "#%06o", word);
+        }
+        break;
+    case 3:
+        if (reg != 7) {
+            snprintf(str, size, "@(%s)+", rn);
+        } else {
+            // pc
+            word = fetch(pm);
+            snprintf(str, size, "@#%06o", word);
+        }
+        break;
+    case 4:
+        snprintf(str, size, "-(%s)", rn);
+        break;
+    case 5:
+        snprintf(str, size, "@-(%s)", rn);
+        break;
+    case 6:
+        word = fetch(pm);
+        if (reg != 7) {
+            snprintf(str, size, "%d(%s)", word, rn);
+        } else {
+            // pc
+            word = fetch(pm);
+            snprintf(str, size, "%06o", word);
+        }
+        break;
+    case 7:
+        word = fetch(pm);
+        if (reg != 7) {
+            snprintf(str, size, "@%d(%s)", word, rn);
+        } else {
+            // pc
+            word = fetch(pm);
+            snprintf(str, size, "@%06o", word);
+        }
+        break;
+    default:
+        assert(0);
+        break;
+    }
 }
 
 int main(int argc, char *argv[]) {
@@ -344,8 +410,7 @@ int main(int argc, char *argv[]) {
         assert(machine.pc < machine.textEnd);
 
         // fetch
-        uint16_t bin = machine.virtualMemory[machine.pc] | (machine.virtualMemory[machine.pc + 1] << 8);
-        machine.pc += 2;
+        uint16_t bin = fetch(&machine);
 
         // decode
         uint16_t op = bin >> 12; // 4 bits
@@ -354,6 +419,8 @@ int main(int argc, char *argv[]) {
         uint8_t mode1 = (bin & 0x0038) >> 3;
         uint8_t reg1 = bin & 0x0007;
         uint8_t offset = bin & 0x00ff; // 8 bits
+        char operand0[16];
+        char operand1[16];
         if (op == 0 || op == 8) {
             if (mode0 & 4) {
                 // singleOperand
@@ -364,14 +431,13 @@ int main(int argc, char *argv[]) {
                     table = singleOperand1;
                 }
                 op = ((mode0 & 3) << 3) | reg0; // (2+3) bits
-                printf("pc:%04x sp:%04x bin:%06o op:%02o mode1:%o, %s %s\n",
+                operand_string(&machine, operand1, sizeof(operand1), mode1, reg1);
+                printf("pc:%04x sp:%04x bin:%06o, %s %s\n",
                     machine.pc - 2,
                     machine.sp,
                     bin,
-                    op,
-                    mode1,
                     table[op].mnemonic,
-                    toRegName[reg1]);
+                    operand1);
                 continue;
             } else {
                 // conditionalBranch
@@ -462,16 +528,15 @@ int main(int argc, char *argv[]) {
         }
         {
             // doubleOperand0
-            printf("pc:%04x sp:%04x bin:%06o op:%02o mode0:%o mode1:%o, %s %s %s\n",
+            operand_string(&machine, operand0, sizeof(operand0), mode0, reg0);
+            operand_string(&machine, operand1, sizeof(operand1), mode1, reg1);
+            printf("pc:%04x sp:%04x bin:%06o, %s %s %s\n",
                 machine.pc - 2,
                 machine.sp,
                 bin,
-                op,
-                mode0,
-                mode1,
                 doubleOperand0[op].mnemonic,
-                toRegName[reg0],
-                toRegName[reg1]);
+                operand0,
+                operand1);
             continue;
         }
     }
