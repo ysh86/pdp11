@@ -467,21 +467,20 @@ int main(int argc, char *argv[]) {
                                 op,
                                 "???");
                             continue;
-                            //assert(0);
+                            assert(0);
                         }
                     }
                 } else {
                     table = conditionalBranch1;
                     op = ((mode0 & 3) << 1) | (reg0 >> 2); // (2+1) bits
                 }
-                printf("%04x %04x: pc:%04x sp:%04x bin:%06o op:%02o, %s %03o\n",
+                printf("%04x %04x: pc:%04x sp:%04x bin:%06o, %s %03o / 0x%02x\n",
                     addr, bin,
                     machine.pc,
                     machine.sp,
                     bin,
-                    op,
                     table[op].mnemonic,
-                    offset);
+                    offset, offset << 1);
                 continue;
             }
 
