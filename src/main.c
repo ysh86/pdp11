@@ -439,6 +439,11 @@ int main(int argc, char *argv[]) {
                     bin,
                     table[op].mnemonic,
                     operand1);
+                while (machine.pc > addr + 2) {
+                    addr += 2;
+                    bin = machine.virtualMemory[addr] | (machine.virtualMemory[addr+1] << 8);
+                    printf("%04x %04x:\n", addr, bin);
+                }
                 continue;
             } else {
                 // conditionalBranch
@@ -554,6 +559,11 @@ int main(int argc, char *argv[]) {
                 doubleOperand0[op].mnemonic,
                 operand0,
                 operand1);
+            while (machine.pc > addr + 2) {
+                addr += 2;
+                bin = machine.virtualMemory[addr] | (machine.virtualMemory[addr+1] << 8);
+                printf("%04x %04x:\n", addr, bin);
+            }
             continue;
         }
     }
