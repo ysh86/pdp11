@@ -28,6 +28,42 @@ char *toRegName[] = {
     "pc", //"r7",
 };
 
+char *toFlagName[] = {
+    "nop",
+    "cl" "c",
+    "cl" "v",
+    "cl" "vc"
+    "cl" "z",
+    "cl" "zc",
+    "cl" "zv",
+    "cl" "zvc",
+    "cl" "n",
+    "cl" "nc",
+    "cl" "nv",
+    "cl" "nvc",
+    "cl" "nz",
+    "cl" "nzc",
+    "cl" "nzv",
+    "ccc",
+
+    "nop",
+    "se" "c",
+    "se" "v",
+    "se" "vc"
+    "se" "z",
+    "se" "zc",
+    "se" "zv",
+    "se" "zvc",
+    "se" "n",
+    "se" "nc",
+    "se" "nv",
+    "se" "nvc",
+    "se" "nz",
+    "se" "nzc",
+    "se" "nzv",
+    "scc",
+};
+
 instruction_t doubleOperand0[] = {
     {"", 0},     // 0 000b: singleOperand0[], conditionalBranch0[]
     {"mov", 4},  // 0 001b:
@@ -299,7 +335,11 @@ void operand_string(machine_t *pm, char *str, size_t size, uint8_t mode, uint8_t
             snprintf(str, size, "%d(%s)", word, rn);
         } else {
             // pc
-            snprintf(str, size, "%06o / 0x%04x", word, word);
+            if (word > 0) {
+                snprintf(str, size, "%06o / 0x%04x", word, word);
+            } else {
+                snprintf(str, size, "%d / 0x%04x", word, word & 0xffff);
+            }
         }
         break;
     case 7:
@@ -455,13 +495,63 @@ int main(int argc, char *argv[]) {
                         // systemMisc
                         table = systemMisc;
                         if (reg0 == 0 && mode1 == 0) {
+                            // interrupt, misc
                             op = reg1;
+                            printf("%04x %04x: pc:%04x sp:%04x bin:%06o, %s\n",
+                                addr, bin,
+                                machine.pc,
+                                machine.sp,
+                                bin,
+                                table[op].mnemonic);
+                            continue;
                         } else if (reg0 == 1) {
+                            // jmp
                             op = 8;
+                            operand_string(&machine, operand1, sizeof(operand1), mode1, reg1);
+                            printf("%04x %04x: pc:%04x sp:%04x bin:%06o, %s %s\n",
+                                addr, bin,
+                                machine.pc,
+                                machine.sp,
+                                bin,
+                                table[op].mnemonic,
+                                operand1);
+                            continue;
                         } else if (reg0 == 2) {
                             op = 9 + (mode1 >> 1);
+                            if (op == 9) {
+                                // subroutine
+                                operand_string(&machine, operand1, sizeof(operand1), 0, reg1);
+                                printf("%04x %04x: pc:%04x sp:%04x bin:%06o, %s %s\n",
+                                    addr, bin,
+                                    machine.pc,
+                                    machine.sp,
+                                    bin,
+                                    table[op].mnemonic,
+                                    operand1);
+                                continue;
+                            } else {
+                                // condition
+                                op = bin & 0x1f;
+                                printf("%04x %04x: pc:%04x sp:%04x bin:%06o, %s\n",
+                                    addr, bin,
+                                    machine.pc,
+                                    machine.sp,
+                                    bin,
+                                    toFlagName[op]);
+                                continue;
+                            }
                         } else if (reg0 == 3) {
+                            // swab
                             op = 13;
+                            operand_string(&machine, operand1, sizeof(operand1), mode1, reg1);
+                            printf("%04x %04x: pc:%04x sp:%04x bin:%06o, %s %s\n",
+                                addr, bin,
+                                machine.pc,
+                                machine.sp,
+                                bin,
+                                table[op].mnemonic,
+                                operand1);
+                            continue;
                         } else {
                             // TODO: unknown op
                             printf("%04x %04x: pc:%04x sp:%04x bin:%06o op:%03o, %s\n",
@@ -471,8 +561,8 @@ int main(int argc, char *argv[]) {
                                 bin,
                                 op,
                                 "???");
+                            //assert(0);
                             continue;
-                            assert(0);
                         }
                     }
                 } else {
