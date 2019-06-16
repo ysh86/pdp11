@@ -594,17 +594,35 @@ int main(int argc, char *argv[]) {
         if (op == 7) {
             if (mode0 != 5) {
                 // doubleOperand1
-                op = bin >> 9; // (4+3) bits
-                printf("%04x %04x: pc:%04x sp:%04x bin:%06o op:%03o mode1:%o, %s %s %s\n",
-                    addr, bin,
-                    machine.pc,
-                    machine.sp,
-                    bin,
-                    op,
-                    mode1,
-                    doubleOperand1[op&7].mnemonic,
-                    toRegName[reg0],
-                    toRegName[reg1]);
+                op = (bin >> 9) & 7; // (4+3) bits
+                if (op != 7) {
+                    operand_string(&machine, operand0, sizeof(operand0), 0, reg0);
+                    operand_string(&machine, operand1, sizeof(operand1), mode1, reg1);
+                    printf("%04x %04x: pc:%04x sp:%04x bin:%06o, %s %s %s\n",
+                        addr, bin,
+                        machine.pc,
+                        machine.sp,
+                        bin,
+                        doubleOperand1[op].mnemonic,
+                        operand0,
+                        operand1);
+                    while (machine.pc > addr + 2) {
+                        addr += 2;
+                        bin = machine.virtualMemory[addr] | (machine.virtualMemory[addr+1] << 8);
+                        printf("%04x %04x:\n", addr, bin);
+                    }
+                } else {
+                    offset &= 0x3f; // 6 bits
+                    operand_string(&machine, operand0, sizeof(operand0), 0, reg0);
+                    printf("%04x %04x: pc:%04x sp:%04x bin:%06o, %s %s %02o / 0x%02x\n",
+                        addr, bin,
+                        machine.pc,
+                        machine.sp,
+                        bin,
+                        doubleOperand1[op].mnemonic,
+                        operand0,
+                        offset, offset << 1);
+                }
             } else {
                 // floatingPoint0
                 op = bin >> 9; // (4+3) bits
