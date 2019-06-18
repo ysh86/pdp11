@@ -515,6 +515,11 @@ int main(int argc, char *argv[]) {
                                 bin,
                                 table[op].mnemonic,
                                 operand1);
+                            while (machine.pc > addr + 2) {
+                                addr += 2;
+                                bin = machine.virtualMemory[addr] | (machine.virtualMemory[addr+1] << 8);
+                                printf("%04x %04x:\n", addr, bin);
+                            }
                             continue;
                         } else if (reg0 == 2) {
                             op = 9 + (mode1 >> 1);
@@ -551,6 +556,11 @@ int main(int argc, char *argv[]) {
                                 bin,
                                 table[op].mnemonic,
                                 operand1);
+                            while (machine.pc > addr + 2) {
+                                addr += 2;
+                                bin = machine.virtualMemory[addr] | (machine.virtualMemory[addr+1] << 8);
+                                printf("%04x %04x:\n", addr, bin);
+                            }
                             continue;
                         } else {
                             // TODO: unknown op
@@ -642,14 +652,11 @@ int main(int argc, char *argv[]) {
         if (op == 15) {
             // floatingPoint1
             op = offset & 0xf;
-            printf("%04x %04x: pc:%04x sp:%04x bin:%06o op:%02o mode0:%o mode1:%o, %s\n",// %s %s\n",
+            printf("%04x %04x: pc:%04x sp:%04x bin:%06o, %s\n",// %s %s\n",
                 addr, bin,
                 machine.pc,
                 machine.sp,
                 bin,
-                op,
-                mode0,
-                mode1,
                 floatingPoint1[op].mnemonic);
                 //toRegName[reg0],
                 //toRegName[reg1]);
