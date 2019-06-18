@@ -141,7 +141,7 @@ instruction_t singleOperand1[] = {
     {"emt", 2},  // 1 000 100 001b:
     {"emt", 2},  // 1 000 100 010b:
     {"emt", 2},  // 1 000 100 011b:
-    {"trap", 2}, // 1 000 100 100b:
+    {"sys", 1},  // 1 000 100 100b:
     {"trap", 2}, // 1 000 100 101b:
     {"trap", 2}, // 1 000 100 110b:
     {"trap", 2}, // 1 000 100 111b:
@@ -293,6 +293,35 @@ uint16_t pop(machine_t *pm) {
     uint16_t value = pm->virtualMemory[pm->sp];
     pm->sp += 2;
     return value;
+}
+
+uint16_t syscall_string(machine_t *pm, char *str, size_t size, uint8_t id) {
+    uint16_t ret = 0;
+    uint16_t word0 = 0;
+    uint16_t word1 = 0;
+    switch (id) {
+    case 0:
+        // indir
+        word0 = fetch(pm);
+        snprintf(str, size, "0; 0x%04x", word0);
+        ret = word0;
+        break;
+    case 1:
+        // exit
+        snprintf(str, size, "exit");
+        break;
+    case 4:
+        // write
+        word0 = fetch(pm);
+        word1 = fetch(pm);
+        snprintf(str, size, "write; 0x%04x; 0x%04x", word0, word1);
+        break;
+    default:
+        // TODO: not implemented
+        assert(0);
+        break;
+    }
+    return ret;
 }
 
 void operand_string(machine_t *pm, char *str, size_t size, uint8_t mode, uint8_t reg) {
@@ -465,13 +494,20 @@ int main(int argc, char *argv[]) {
             if (mode0 & 4) {
                 // singleOperand
                 instruction_t *table;
+                uint8_t syscall_id = 0xff;
+                uint16_t syscall_indir_addr = 0;
                 if (op == 0) {
                     table = singleOperand0;
                 } else {
                     table = singleOperand1;
                 }
                 op = ((mode0 & 3) << 3) | reg0; // (2+3) bits
-                operand_string(&machine, operand1, sizeof(operand1), mode1, reg1);
+                if (op == 4) {
+                    syscall_id = (mode1 << 3) | reg1;
+                    syscall_indir_addr = syscall_string(&machine, operand1, sizeof(operand1), syscall_id);
+                } else {
+                    operand_string(&machine, operand1, sizeof(operand1), mode1, reg1);
+                }
                 printf("%04x %04x: pc:%04x sp:%04x bin:%06o, %s %s\n",
                     addr, bin,
                     machine.pc,
@@ -483,6 +519,19 @@ int main(int argc, char *argv[]) {
                     addr += 2;
                     bin = machine.virtualMemory[addr] | (machine.virtualMemory[addr+1] << 8);
                     printf("%04x %04x:\n", addr, bin);
+                }
+                if (syscall_id == 0) {
+                    // syscall indir
+                    uint16_t oldpc = machine.pc;
+                    machine.pc = syscall_indir_addr;
+                    bin = fetch(&machine);
+                    syscall_id = bin & 0x3f;
+                    assert(bin - syscall_id == 0104400);
+                    syscall_string(&machine, operand1, sizeof(operand1), syscall_id);
+                    printf(".data\n");
+                    printf("                                       sys %s\n", operand1);
+                    printf(".text\n");
+                    machine.pc = oldpc;
                 }
                 continue;
             } else {
