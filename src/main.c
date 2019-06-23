@@ -97,14 +97,14 @@ instruction_t doubleOperand1[] = {
 
 instruction_t singleOperand0[] = {
     // 004r
-    {"jsr r0", 2},  // 0 000 100
-    {"jsr r1", 2},  // 0 000 100
-    {"jsr r2", 2},  // 0 000 100
-    {"jsr r3", 2},  // 0 000 100
-    {"jsr r4", 2},  // 0 000 100
-    {"jsr r5", 2},  // 0 000 100
-    {"jsr sp", 2},  // 0 000 100
-    {"jsr pc", 2},  // 0 000 100
+    {"jsr", 2},  // 0 000 100 000b: r0
+    {"jsr", 2},  // 0 000 100 001b: r1
+    {"jsr", 2},  // 0 000 100 010b: r2
+    {"jsr", 2},  // 0 000 100 011b: r3
+    {"jsr", 2},  // 0 000 100 100b: r4
+    {"jsr", 2},  // 0 000 100 101b: r5
+    {"jsr", 2},  // 0 000 100 110b: sp
+    {"jsr", 2},  // 0 000 100 111b: pc
 
     // 005?
     {"clr", 2},  // 0 000 101 000b:
@@ -340,23 +340,23 @@ void operand_string(machine_t *pm, char *str, size_t size, uint8_t mode, uint8_t
         } else {
             // pc
             word = fetch(pm);
-            snprintf(str, size, "#%06o / 0x%04x", word, word);
+            snprintf(str, size, "$0x%04x", word & 0xffff);
         }
         break;
     case 3:
         if (reg != 7) {
-            snprintf(str, size, "@(%s)+", rn);
+            snprintf(str, size, "*(%s)+", rn);
         } else {
             // pc
             word = fetch(pm);
-            snprintf(str, size, "@#%06o / 0x%04x", word, word);
+            snprintf(str, size, "%04x", word & 0xffff);
         }
         break;
     case 4:
         snprintf(str, size, "-(%s)", rn);
         break;
     case 5:
-        snprintf(str, size, "@-(%s)", rn);
+        snprintf(str, size, "*-(%s)", rn);
         break;
     case 6:
         word = fetch(pm);
@@ -364,20 +364,16 @@ void operand_string(machine_t *pm, char *str, size_t size, uint8_t mode, uint8_t
             snprintf(str, size, "%d(%s)", word, rn);
         } else {
             // pc
-            if (word > 0) {
-                snprintf(str, size, "%06o / 0x%04x", word, word);
-            } else {
-                snprintf(str, size, "%d / 0x%04x", word, word & 0xffff);
-            }
+            snprintf(str, size, "%04x", (word + (int16_t)(pm->pc)) & 0xffff);
         }
         break;
     case 7:
         word = fetch(pm);
         if (reg != 7) {
-            snprintf(str, size, "@%d(%s)", word, rn);
+            snprintf(str, size, "*%d(%s)", word, rn);
         } else {
             // pc
-            snprintf(str, size, "@%06o / 0x%04x", word, word);
+            snprintf(str, size, "*0x%04x", (word + (int16_t)(pm->pc)) & 0xffff);
         }
         break;
     default:
@@ -508,15 +504,21 @@ int main(int argc, char *argv[]) {
                     table = singleOperand1;
                 }
                 op = ((mode0 & 3) << 3) | reg0; // (2+3) bits
-                if (op == 4) {
+                operand0[0] = '\0';
+                if (table == singleOperand1 && op == 4) {
                     syscall_id = (mode1 << 3) | reg1;
                     syscall_indir_addr = syscall_string(&machine, operand1, sizeof(operand1), syscall_id);
                 } else {
+                    if (table == singleOperand0 && mode0 == 4) {
+                        // jsr
+                        snprintf(operand0, sizeof(operand0), "%s,", toRegName[reg0]);
+                    }
                     operand_string(&machine, operand1, sizeof(operand1), mode1, reg1);
                 }
-                printf("0x%04x: %s %s\t\t/ bin:%04x, bin:%06o, pc:%04x, sp:%04x\n",
+                printf("%04x: %s\t%s%s\t\t/ bin:%04x, bin:%06o, pc:%04x, sp:%04x\n",
                     addr,
                     table[op].mnemonic,
+                    operand0,
                     operand1,
                     bin,
                     bin,
@@ -525,7 +527,7 @@ int main(int argc, char *argv[]) {
                 while (machine.pc > addr + 2) {
                     addr += 2;
                     bin = machine.virtualMemory[addr] | (machine.virtualMemory[addr+1] << 8);
-                    printf("0x%04x: / %04x\n", addr, bin);
+                    printf("%04x: /\t%04x\n", addr, bin);
                 }
                 if (syscall_id == 0) {
                     // syscall indir
@@ -536,7 +538,7 @@ int main(int argc, char *argv[]) {
                     assert(bin - syscall_id == 0104400);
                     syscall_string(&machine, operand1, sizeof(operand1), syscall_id);
                     printf(".data\n");
-                    printf("0x%04x: sys %s\n", syscall_indir_addr, operand1);
+                    printf("%04x: sys\t%s\n", syscall_indir_addr, operand1);
                     printf(".text\n");
                     machine.pc = oldpc;
                 }
@@ -553,7 +555,7 @@ int main(int argc, char *argv[]) {
                         if (reg0 == 0 && mode1 == 0) {
                             // interrupt, misc
                             op = reg1;
-                            printf("0x%04x: %s\t\t/ bin:%04x, bin:%06o, pc:%04x, sp:%04x\n",
+                            printf("%04x: %s\t\t/ bin:%04x, bin:%06o, pc:%04x, sp:%04x\n",
                                 addr,
                                 table[op].mnemonic,
                                 bin,
@@ -565,7 +567,7 @@ int main(int argc, char *argv[]) {
                             // jmp
                             op = 8;
                             operand_string(&machine, operand1, sizeof(operand1), mode1, reg1);
-                            printf("0x%04x: %s %s\t\t/ bin:%04x, bin:%06o, pc:%04x, sp:%04x\n",
+                            printf("%04x: %s\t%s\t\t/ bin:%04x, bin:%06o, pc:%04x, sp:%04x\n",
                                 addr,
                                 table[op].mnemonic,
                                 operand1,
@@ -576,7 +578,7 @@ int main(int argc, char *argv[]) {
                             while (machine.pc > addr + 2) {
                                 addr += 2;
                                 bin = machine.virtualMemory[addr] | (machine.virtualMemory[addr+1] << 8);
-                                printf("0x%04x: / %04x\n", addr, bin);
+                                printf("%04x: /\t%04x\n", addr, bin);
                             }
                             continue;
                         } else if (reg0 == 2) {
@@ -584,7 +586,7 @@ int main(int argc, char *argv[]) {
                             if (op == 9) {
                                 // subroutine
                                 operand_string(&machine, operand1, sizeof(operand1), 0, reg1);
-                                printf("0x%04x: %s %s\t\t/ bin:%04x, bin:%06o, pc:%04x, sp:%04x\n",
+                                printf("%04x: %s\t%s\t\t/ bin:%04x, bin:%06o, pc:%04x, sp:%04x\n",
                                     addr,
                                     table[op].mnemonic,
                                     operand1,
@@ -596,7 +598,7 @@ int main(int argc, char *argv[]) {
                             } else {
                                 // condition
                                 op = bin & 0x1f;
-                                printf("0x%04x: %s\t\t/ bin:%04x, bin:%06o, pc:%04x, sp:%04x\n",
+                                printf("%04x: %s\t\t/ bin:%04x, bin:%06o, pc:%04x, sp:%04x\n",
                                     addr,
                                     toFlagName[op],
                                     bin,
@@ -609,7 +611,7 @@ int main(int argc, char *argv[]) {
                             // swab
                             op = 13;
                             operand_string(&machine, operand1, sizeof(operand1), mode1, reg1);
-                            printf("0x%04x: %s %s\t\t/ bin:%04x, bin:%06o, pc:%04x, sp:%04x\n",
+                            printf("%04x: %s\t%s\t\t/ bin:%04x, bin:%06o, pc:%04x, sp:%04x\n",
                                 addr,
                                 table[op].mnemonic,
                                 operand1,
@@ -620,12 +622,12 @@ int main(int argc, char *argv[]) {
                             while (machine.pc > addr + 2) {
                                 addr += 2;
                                 bin = machine.virtualMemory[addr] | (machine.virtualMemory[addr+1] << 8);
-                                printf("0x%04x: / %04x\n", addr, bin);
+                                printf("%04x: /\t%04x\n", addr, bin);
                             }
                             continue;
                         } else {
                             // TODO: unknown op
-                            printf("0x%04x: %s\t\t/ bin:%04x, bin:%06o, op:%03o, pc:%04x, sp:%04x\n",
+                            printf("%04x: %s\t\t/ bin:%04x, bin:%06o, op:%03o, pc:%04x, sp:%04x\n",
                                 addr,
                                 "???",
                                 bin,
@@ -641,10 +643,10 @@ int main(int argc, char *argv[]) {
                     table = conditionalBranch1;
                     op = ((mode0 & 3) << 1) | (reg0 >> 2); // (2+1) bits
                 }
-                printf("0x%04x: %s %03o / 0x%02x\t/ bin:%04x, bin:%06o, pc:%04x, sp:%04x\n",
+                printf("%04x: %s\t%04x\t\t/ bin:%04x, bin:%06o, pc:%04x, sp:%04x\n",
                     addr,
                     table[op].mnemonic,
-                    offset, offset << 1,
+                    machine.pc + ((int8_t)offset << 1),
                     bin,
                     bin,
                     machine.pc,
@@ -653,7 +655,7 @@ int main(int argc, char *argv[]) {
             }
 
             // TODO: unknown op
-            printf("0x%04x: %s\t\t/ bin:%04x, bin:%06o, op:%03o, pc:%04x, sp:%04x\n",
+            printf("%04x: %s\t\t/ bin:%04x, bin:%06o, op:%03o, pc:%04x, sp:%04x\n",
                 addr,
                 "???",
                 bin,
@@ -672,7 +674,7 @@ int main(int argc, char *argv[]) {
                 if (op != 7) {
                     operand_string(&machine, operand0, sizeof(operand0), 0, reg0);
                     operand_string(&machine, operand1, sizeof(operand1), mode1, reg1);
-                    printf("0x%04x: %s %s %s\t\t/ bin:%04x, bin:%06o, pc:%04x, sp:%04x\n",
+                    printf("%04x: %s\t%s,%s\t\t/ bin:%04x, bin:%06o, pc:%04x, sp:%04x\n",
                         addr,
                         doubleOperand1[op].mnemonic,
                         operand0,
@@ -684,16 +686,17 @@ int main(int argc, char *argv[]) {
                     while (machine.pc > addr + 2) {
                         addr += 2;
                         bin = machine.virtualMemory[addr] | (machine.virtualMemory[addr+1] << 8);
-                        printf("0x%04x: / %04x\n", addr, bin);
+                        printf("%04x: /\t%04x\n", addr, bin);
                     }
                 } else {
+                    // sob
                     offset &= 0x3f; // 6 bits
                     operand_string(&machine, operand0, sizeof(operand0), 0, reg0);
-                    printf("0x%04x: %s %s %02o / 0x%02x\t/ bin:%04x, bin:%06o, pc:%04x, sp:%04x\n",
+                    printf("%04x: %s\t%s,%04x\t\t/ bin:%04x, bin:%06o, pc:%04x, sp:%04x\n",
                         addr,
                         doubleOperand1[op].mnemonic,
                         operand0,
-                        offset, offset << 1,
+                        machine.pc - (offset << 1),
                         bin,
                         bin,
                         machine.pc,
@@ -702,7 +705,7 @@ int main(int argc, char *argv[]) {
             } else {
                 // floatingPoint0
                 op = bin >> 9; // (4+3) bits
-                printf("0x%04x: %s %s %s\t\t/ bin:%04x, bin:%06o, op:%03o, mode1:%o, pc:%04x, sp:%04x\n",
+                printf("%04x: %s\t%s,%s\t\t/ bin:%04x, bin:%06o, op:%03o, mode1:%o, pc:%04x, sp:%04x\n",
                     addr,
                     floatingPoint0[reg0].mnemonic,
                     toRegName[reg0],
@@ -719,7 +722,7 @@ int main(int argc, char *argv[]) {
         if (op == 15) {
             // floatingPoint1
             op = offset & 0xf;
-            printf("0x%04x: %s\t\t\t/ bin:%04x, bin:%06o, pc:%04x, sp:%04x\n",
+            printf("%04x: %s\t\t\t\t/ bin:%04x, bin:%06o, pc:%04x, sp:%04x\n",
                 addr,
                 floatingPoint1[op].mnemonic,
                 //toRegName[reg0],
@@ -734,7 +737,7 @@ int main(int argc, char *argv[]) {
             // doubleOperand0
             operand_string(&machine, operand0, sizeof(operand0), mode0, reg0);
             operand_string(&machine, operand1, sizeof(operand1), mode1, reg1);
-            printf("0x%04x: %s %s %s\t\t/ bin:%04x, bin:%06o, pc:%04x, sp:%04x\n",
+            printf("%04x: %s\t%s,%s\t/ bin:%04x, bin:%06o, pc:%04x, sp:%04x\n",
                 addr,
                 doubleOperand0[op].mnemonic,
                 operand0,
@@ -746,7 +749,7 @@ int main(int argc, char *argv[]) {
             while (machine.pc > addr + 2) {
                 addr += 2;
                 bin = machine.virtualMemory[addr] | (machine.virtualMemory[addr+1] << 8);
-                printf("0x%04x: / %04x\n", addr, bin);
+                printf("%04x: /\t%04x\n", addr, bin);
             }
             continue;
         }
