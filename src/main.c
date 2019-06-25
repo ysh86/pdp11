@@ -28,42 +28,6 @@ char *toRegName[] = {
     "pc", //"r7",
 };
 
-instruction_t toFlagName[] = {
-    {"nop", 0},
-    {"cl" "c", 0},
-    {"cl" "v", 0},
-    {"cl" "vc", 0},
-    {"cl" "z", 0},
-    {"cl" "zc", 0},
-    {"cl" "zv", 0},
-    {"cl" "zvc", 0},
-    {"cl" "n", 0},
-    {"cl" "nc", 0},
-    {"cl" "nv", 0},
-    {"cl" "nvc", 0},
-    {"cl" "nz", 0},
-    {"cl" "nzc", 0},
-    {"cl" "nzv", 0},
-    {"ccc", 0},
-
-    {"nop", 0},
-    {"se" "c", 0},
-    {"se" "v", 0},
-    {"se" "vc", 0},
-    {"se" "z", 0},
-    {"se" "zc", 0},
-    {"se" "zv", 0},
-    {"se" "zvc", 0},
-    {"se" "n", 0},
-    {"se" "nc", 0},
-    {"se" "nv", 0},
-    {"se" "nvc", 0},
-    {"se" "nz", 0},
-    {"se" "nzc", 0},
-    {"se" "nzv", 0},
-    {"scc", 0},
-};
-
 instruction_t doubleOperand0[] = {
     {"", 0},     // 0 000b: singleOperand0[], conditionalBranch0[]
     {"mov", 4},  // 0 001b:
@@ -116,6 +80,7 @@ instruction_t singleOperand0[] = {
     {"sbc", 2},  // 0 000 101 110b:
     {"tst", 2},  // 0 000 101 111b:
     // 006?
+    // TODO: not implemented
     {"ror", 2},  // 0 000 110 000b:
     {"rol", 2},  // 0 000 110 001b:
     {"asr", 2},  // 0 000 110 010b:
@@ -156,6 +121,7 @@ instruction_t singleOperand1[] = {
     {"sbcb", 2}, // 1 000 101 110b:
     {"tstb", 2}, // 1 000 101 111b:
     // 106?
+    // TODO: not implemented
     {"rorb", 2}, // 1 000 110 000b:
     {"rolb", 2}, // 1 000 110 001b:
     {"asrb", 2}, // 1 000 110 010b:
@@ -198,6 +164,7 @@ instruction_t conditionalBranch1[] = {
 };
 
 instruction_t systemMisc[] = {
+    // TODO: not implemented
     {"halt", 0},  // 0 000 000 000 000 000b:
     {"wait", 0},  // 0 000 000 000 000 001b:
     {"rti", 0},   // 0 000 000 000 000 010b:
@@ -212,13 +179,14 @@ instruction_t systemMisc[] = {
     // subroutine, condition
     {"rts", 1},   // 0 000 000 010 000b:
     {NULL, 0},    // 0 000 000 010 010b:
-    {"clear", 0}, // 0 000 000 010 100 000b:
-    {"set", 0},   // 0 000 000 010 110 000b:
+    {"clear", 0}, // 0 000 000 010 100 000b: // TODO: not implemented
+    {"set", 0},   // 0 000 000 010 110 000b: // TODO: not implemented
 
-    {"swab", 2},  // 0 000 000 011b:
+    {"swab", 2},  // 0 000 000 011b: // TODO: not implemented
 };
 
 instruction_t floatingPoint0[] = {
+    // TODO: not implemented
     {"fadd", 1},   // 0 111 101 000b:
     {"fsub", 1},   // 0 111 101 001b:
     {"fmul", 1},   // 0 111 101 010b:
@@ -249,6 +217,43 @@ instruction_t floatingPoint1[] = {
     {NULL, 0},   // 1 111 000 000 001 101b:
     {NULL, 0},   // 1 111 000 000 001 110b:
     {NULL, 0},   // 1 111 000 000 001 111b:
+};
+
+ // TODO: not implemented
+ instruction_t clearSet[] = {
+    {"nop", 0},
+    {"cl" "c", 0},
+    {"cl" "v", 0},
+    {"cl" "vc", 0},
+    {"cl" "z", 0},
+    {"cl" "zc", 0},
+    {"cl" "zv", 0},
+    {"cl" "zvc", 0},
+    {"cl" "n", 0},
+    {"cl" "nc", 0},
+    {"cl" "nv", 0},
+    {"cl" "nvc", 0},
+    {"cl" "nz", 0},
+    {"cl" "nzc", 0},
+    {"cl" "nzv", 0},
+    {"ccc", 0},
+
+    {"nop", 0},
+    {"se" "c", 0},
+    {"se" "v", 0},
+    {"se" "vc", 0},
+    {"se" "z", 0},
+    {"se" "zc", 0},
+    {"se" "zv", 0},
+    {"se" "zvc", 0},
+    {"se" "n", 0},
+    {"se" "nc", 0},
+    {"se" "nv", 0},
+    {"se" "nvc", 0},
+    {"se" "nz", 0},
+    {"se" "nzc", 0},
+    {"se" "nzv", 0},
+    {"scc", 0},
 };
 
 typedef struct machine_t_tag {
@@ -606,89 +611,88 @@ int main(int argc, char *argv[]) {
         machine.reg1 = machine.bin & 0x0007;
         machine.offset = machine.bin & 0x00ff;
         machine.syscallID = machine.bin & 0x003f;
-        uint8_t op_temp = machine.op & 7;
-        if (op_temp != 0 && op_temp != 7) {
-            disasm(&machine, doubleOperand0);
-            continue;
-        }
-        if (machine.op == 7) {
-            if (machine.mode0 != 5) {
-                machine.op = (machine.bin >> 9) & 7; // (4+3) bits
-                if (machine.op != 7) {
-                    disasm(&machine, doubleOperand1);
-                } else {
-                    // sob
-                    machine.offset &= 0x3f; // 6 bits
-                    disasm(&machine, doubleOperand1);
-                }
-            } else {
-                machine.op = machine.bin >> 9; // (4+3) bits
-                //disasm(&machine, floatingPoint0);
-                // TODO: not implemented
-                assert(0);
+        instruction_t *table = NULL;
+        do {
+            uint8_t op_temp = machine.op & 7;
+            if (op_temp != 0 && op_temp != 7) {
+                table = doubleOperand0;
+                break;
             }
-            continue;
-        }
-        if (machine.op == 15) {
-            machine.op = machine.offset & 0xf; // 4 bits
-            disasm(&machine, floatingPoint1);
-            continue;
-        }
-        if (machine.op == 0 || machine.op == 8) {
-            if (machine.mode0 & 4) {
-                instruction_t *table;
-                if (machine.op == 0) {
-                    table = singleOperand0;
-                } else {
-                    table = singleOperand1;
-                }
-                machine.op = ((machine.mode0 & 3) << 3) | machine.reg0; // (2+3) bits
-                disasm(&machine, table);
-                continue;
-            } else {
-                // conditionalBranch
-                instruction_t *table;
-                if (machine.op == 0) {
-                    table = conditionalBranch0;
-                    machine.op = ((machine.mode0 & 3) << 1) | (machine.reg0 >> 2); // (2+1) bits
-                    if (machine.op == 0) {
-                        // systemMisc
-                        table = systemMisc;
-                        if (machine.reg0 == 0 && machine.mode1 == 0) {
-                            // interrupt, misc
-                            machine.op = machine.reg1;
-                        } else if (machine.reg0 == 1) {
-                            // jmp
-                            machine.op = 8;
-                        } else if (machine.reg0 == 2) {
-                            machine.op = 9 + (machine.mode1 >> 1);
-                            if (machine.op == 9) {
-                                // subroutine
-                            } else {
-                                // condition
-                                table = toFlagName;
-                                machine.op = machine.bin & 0x1f;
-                            }
-                        } else if (machine.reg0 == 3) {
-                            // swab
-                            machine.op = 13;
-                        } else {
-                            // TODO: unknown op
-                            assert(0);
-                        }
+            if (machine.op == 7) {
+                if (machine.mode0 != 5) {
+                    table = doubleOperand1;
+                    machine.op = (machine.bin >> 9) & 7; // (4+3) bits
+                    if (machine.op == 7) {
+                        // sob
+                        machine.offset &= 0x3f; // 6 bits
                     }
                 } else {
-                    table = conditionalBranch1;
-                    machine.op = ((machine.mode0 & 3) << 1) | (machine.reg0 >> 2); // (2+1) bits
+                    table = floatingPoint0;
+                    machine.op = machine.bin >> 9; // (4+3) bits
+                    // TODO: not implemented
+                    assert(0);
                 }
-                disasm(&machine, table);
-                continue;
+                break;
             }
+            if (machine.op == 15) {
+                table = floatingPoint1;
+                machine.op = machine.offset & 0xf; // 4 bits
+                break;
+            }
+            if (machine.op == 0 || machine.op == 8) {
+                if (machine.mode0 & 4) {
+                    if (machine.op == 0) {
+                        table = singleOperand0;
+                    } else {
+                        table = singleOperand1;
+                    }
+                    machine.op = ((machine.mode0 & 3) << 3) | machine.reg0; // (2+3) bits
+                } else {
+                    // conditionalBranch
+                    if (machine.op == 0) {
+                        table = conditionalBranch0;
+                        machine.op = ((machine.mode0 & 3) << 1) | (machine.reg0 >> 2); // (2+1) bits
+                        if (machine.op == 0) {
+                            // systemMisc
+                            table = systemMisc;
+                            if (machine.reg0 == 0 && machine.mode1 == 0) {
+                                // interrupt, misc
+                                machine.op = machine.reg1;
+                            } else if (machine.reg0 == 1) {
+                                // jmp
+                                machine.op = 8;
+                            } else if (machine.reg0 == 2) {
+                                machine.op = 9 + (machine.mode1 >> 1);
+                                if (machine.op == 9) {
+                                    // subroutine
+                                } else {
+                                    // condition
+                                    table = clearSet;
+                                    machine.op = machine.bin & 0x1f;
+                                }
+                            } else if (machine.reg0 == 3) {
+                                // swab
+                                machine.op = 13;
+                            } else {
+                                // TODO: unknown op
+                                assert(0);
+                            }
+                        }
+                    } else {
+                        table = conditionalBranch1;
+                        machine.op = ((machine.mode0 & 3) << 1) | (machine.reg0 >> 2); // (2+1) bits
+                    }
+                }
+                break;
+            }
+        } while(0);
 
+        // exec
+        if (table != NULL) {
+            disasm(&machine, table);
+        } else {
             // TODO: unknown op
             assert(0);
-
-            continue;
         }
     }
 
