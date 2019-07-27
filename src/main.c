@@ -260,7 +260,7 @@ typedef struct machine_t_tag {
     // env
     char rootdir[PATH_MAX];
     char curdir[PATH_MAX];
-    uint16_t aoutHeader[8]; // little endian only
+    uint16_t aoutHeader[8];
 
     // memory
     uint8_t virtualMemory[64 * 1024];
@@ -302,7 +302,7 @@ typedef struct machine_t_tag {
     // 6. op(10bits) syscallID(6bits)
     // misc:
     // 0. op(16bits)
-    uint16_t op;
+    instruction_t *inst;
     uint8_t mode0;
     uint8_t reg0;
     uint8_t mode1;
@@ -412,51 +412,51 @@ void operand_string(machine_t *pm, char *str, size_t size, uint8_t mode, uint8_t
     }
 }
 
-void disasm(machine_t *pm, const instruction_t *instTable) {
+void disasm(machine_t *pm) {
     char operand0[32] = {'\0'};
     char operand1[32] = {'\0'};
     char *sep = "";
     char *tabs = "";
 
-    if (instTable[pm->op].operandNum == 4) {
+    if (pm->inst->operandNum == 4) {
         // doubleOperand0
         operand_string(pm, operand0, sizeof(operand0), pm->mode0, pm->reg0);
         operand_string(pm, operand1, sizeof(operand1), pm->mode1, pm->reg1);
         sep = ",";
         tabs = "\t";
-    } else if (instTable[pm->op].operandNum == 3) {
+    } else if (pm->inst->operandNum == 3) {
         // doubleOperand1, jsr
         operand_string(pm, operand0, sizeof(operand0), 0, pm->reg0);
         operand_string(pm, operand1, sizeof(operand1), pm->mode1, pm->reg1);
         sep = ",";
         tabs = "\t\t";
-    } else if (instTable[pm->op].operandNum == 7) {
+    } else if (pm->inst->operandNum == 7) {
         // doubleOperand1 sob only
         operand_string(pm, operand0, sizeof(operand0), 0, pm->reg0);
         snprintf(operand1, sizeof(operand1), "%04x", pm->pc - (pm->offset << 1));
         sep = ",";
         tabs = "\t\t";
-    } else if (instTable[pm->op].operandNum == 2) {
+    } else if (pm->inst->operandNum == 2) {
         // singleOperand0, singleOperand1, jmp, swab
         operand_string(pm, operand1, sizeof(operand1), pm->mode1, pm->reg1);
         sep = "";
         tabs = "\t\t";
-    } else if (instTable[pm->op].operandNum == 1) {
+    } else if (pm->inst->operandNum == 1) {
         // subroutine
         operand_string(pm, operand1, sizeof(operand1), 0, pm->reg1);
         sep = "";
         tabs = "\t\t";
-    } else if (instTable[pm->op].operandNum == 5) {
+    } else if (pm->inst->operandNum == 5) {
         // conditionalBranch0, conditionalBranch1
         snprintf(operand1, sizeof(operand1), "%04x", pm->pc + ((int8_t)pm->offset << 1));
         sep = "";
         tabs = "\t\t";
-    } else if (instTable[pm->op].operandNum == 6) {
+    } else if (pm->inst->operandNum == 6) {
         // syscall
         syscall_string(pm, operand1, sizeof(operand1), pm->syscallID);
         sep = "";
         tabs = "\t\t";
-    } else if (instTable[pm->op].operandNum == 0) {
+    } else if (pm->inst->operandNum == 0) {
         // floatingPoint1, systemMisc
         sep = "";
         tabs = "\t\t\t";
@@ -467,7 +467,7 @@ void disasm(machine_t *pm, const instruction_t *instTable) {
 
     printf("%04x: %s\t%s%s%s%s/ bin:%04x, bin:%06o, pc:%04x, sp:%04x\n",
         pm->addr,
-        instTable[pm->op].mnemonic,
+        pm->inst->mnemonic,
         operand0,
         sep,
         operand1,
@@ -483,7 +483,7 @@ void disasm(machine_t *pm, const instruction_t *instTable) {
     }
 
     // syscall indir
-    if (instTable[pm->op].operandNum == 6 && pm->syscallID == 0) {
+    if (pm->inst->operandNum == 6 && pm->syscallID == 0) {
         uint16_t oldpc = pm->pc;
         pm->pc = oldpc - 2;
         uint16_t addr = fetch(pm);
@@ -643,75 +643,76 @@ int main(int argc, char *argv[]) {
         machine.bin = fetch(&machine);
 
         // decode
-        machine.op = machine.bin >> 12;
+        machine.inst = NULL;
         machine.mode0 = (machine.bin & 0x0e00) >> 9;
         machine.reg0 = (machine.bin & 0x01c0) >> 6;
         machine.mode1 = (machine.bin & 0x0038) >> 3;
         machine.reg1 = machine.bin & 0x0007;
         machine.offset = machine.bin & 0x00ff;
         machine.syscallID = machine.bin & 0x003f;
+        uint16_t op = machine.bin >> 12;
         instruction_t *table = NULL;
         do {
-            uint8_t op_temp = machine.op & 7;
+            uint8_t op_temp = op & 7;
             if (op_temp != 0 && op_temp != 7) {
                 table = doubleOperand0;
                 break;
             }
-            if (machine.op == 7) {
+            if (op == 7) {
                 if (machine.mode0 != 5) {
                     table = doubleOperand1;
-                    machine.op = (machine.bin >> 9) & 7; // (4+3) bits
-                    if (machine.op == 7) {
+                    op = (machine.bin >> 9) & 7; // (4+3) bits
+                    if (op == 7) {
                         // sob
                         machine.offset &= 0x3f; // 6 bits
                     }
                 } else {
                     table = floatingPoint0;
-                    machine.op = machine.bin >> 9; // (4+3) bits
+                    op = machine.bin >> 9; // (4+3) bits
                     // TODO: not implemented
                     assert(0);
                 }
                 break;
             }
-            if (machine.op == 15) {
+            if (op == 15) {
                 table = floatingPoint1;
-                machine.op = machine.offset & 0xf; // 4 bits
+                op = machine.offset & 0xf; // 4 bits
                 break;
             }
-            if (machine.op == 0 || machine.op == 8) {
+            if (op == 0 || op == 8) {
                 if (machine.mode0 & 4) {
-                    if (machine.op == 0) {
+                    if (op == 0) {
                         table = singleOperand0;
                     } else {
                         table = singleOperand1;
                     }
-                    machine.op = ((machine.mode0 & 3) << 3) | machine.reg0; // (2+3) bits
+                    op = ((machine.mode0 & 3) << 3) | machine.reg0; // (2+3) bits
                 } else {
                     // conditionalBranch
-                    if (machine.op == 0) {
+                    if (op == 0) {
                         table = conditionalBranch0;
-                        machine.op = ((machine.mode0 & 3) << 1) | (machine.reg0 >> 2); // (2+1) bits
-                        if (machine.op == 0) {
+                        op = ((machine.mode0 & 3) << 1) | (machine.reg0 >> 2); // (2+1) bits
+                        if (op == 0) {
                             // systemMisc
                             table = systemMisc;
                             if (machine.reg0 == 0 && machine.mode1 == 0) {
                                 // interrupt, misc
-                                machine.op = machine.reg1;
+                                op = machine.reg1;
                             } else if (machine.reg0 == 1) {
                                 // jmp
-                                machine.op = 8;
+                                op = 8;
                             } else if (machine.reg0 == 2) {
-                                machine.op = 9 + (machine.mode1 >> 1);
-                                if (machine.op == 9) {
+                                op = 9 + (machine.mode1 >> 1);
+                                if (op == 9) {
                                     // subroutine
                                 } else {
                                     // condition
                                     table = clearSet;
-                                    machine.op = machine.bin & 0x1f;
+                                    op = machine.bin & 0x1f;
                                 }
                             } else if (machine.reg0 == 3) {
                                 // swab
-                                machine.op = 13;
+                                op = 13;
                             } else {
                                 // TODO: unknown op
                                 assert(0);
@@ -719,20 +720,21 @@ int main(int argc, char *argv[]) {
                         }
                     } else {
                         table = conditionalBranch1;
-                        machine.op = ((machine.mode0 & 3) << 1) | (machine.reg0 >> 2); // (2+1) bits
+                        op = ((machine.mode0 & 3) << 1) | (machine.reg0 >> 2); // (2+1) bits
                     }
                 }
                 break;
             }
         } while(0);
 
-        // exec
-        if (table != NULL) {
-            disasm(&machine, table);
-        } else {
-            // TODO: unknown op
+        if (table == NULL || table[op].mnemonic == NULL) {
+            // TODO: unknown op or not implemented
             assert(0);
         }
+        machine.inst = &table[op];
+
+        // exec
+        disasm(&machine);
     }
 
     return EXIT_SUCCESS;
