@@ -584,10 +584,49 @@ int main(int argc, char *argv[]) {
     machine.pc = machine.textStart;
     machine.psw = 0;
 
-    // push args
+    // calc size of args
+    uint16_t na = argc - 1;
+    uint16_t nc = 0;
     for (int i = 1; i < argc; i++) {
-        //argv[i];
+        char *pa = argv[i];
+        do {
+            nc++;
+        } while (*pa++ != '\0');
     }
+    if (nc & 1) {
+        nc++;
+    }
+    machine.sp -= 2 + na * 2 + 2 + nc; // argc, argv[0]...argv[na-1], -1, buf
+
+    // push args
+    uint16_t *sp = (uint16_t *)&machine.virtualMemory[machine.sp];
+    char *pbuf = (char *)(sp + 1 + na + 1);
+    *sp++ = na; // argc
+    for (int i = 1; i < argc; i++) { // argv & buf
+        char *pa = argv[i];
+        *sp++ = (uintptr_t)pbuf - (uintptr_t)machine.virtualMemory;
+        do {
+            *pbuf++ = *pa;
+        } while (*pa++ != '\0');
+    }
+    if ((uintptr_t)pbuf & 1) {
+        *pbuf = '\0'; // alignment
+    }
+    *sp = -1; // -1
+
+#if 0
+    // debug dump
+    printf("/ stack: sp = %04x\n", machine.sp);
+    int maxj = sizeof(machine.virtualMemory);
+    for (int j = maxj - 256; j < maxj; j += 16) {
+        printf("/ %04x:", j);
+        for (int i = 0; i < 16; i++) {
+            printf(" %02x", machine.virtualMemory[j + i]);
+        }
+        printf("\n");
+    }
+    printf("\n");
+#endif
 
     //////////////////////////
     // run
