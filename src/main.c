@@ -17,7 +17,6 @@ struct machine_tag;
 typedef struct machine_tag machine_t;
 
 void mov(machine_t *pm);
-void movb(machine_t *pm);
 
 typedef struct instruction_tag {
     char *mnemonic;
@@ -36,7 +35,7 @@ instruction_t doubleOperand0[] = {
     {"",    3, NULL},     // 0 111b: doubleOperand1[], floatingPoint0[]
 
     {"",     0, NULL},     // 1 000b: singleOperand1[], conditionalBranch1[]
-    {"movb", 4, movb}, // 1 001b:
+    {"movb", 4, mov}, // 1 001b:
     {"cmpb", 4, NULL}, // 1 010b:
     {"bitb", 4, NULL}, // 1 011b:
     {"bicb", 4, NULL}, // 1 100b:
@@ -431,13 +430,17 @@ void exec(machine_t *pm) {
 }
 
 void mov(machine_t *pm) {
-    *((uint16_t *)pm->operand1) = *((uint16_t *)pm->operand0);
-    //pm->psw = 
-}
-
-void movb(machine_t *pm) {
-    //*pm->operand1 = *pm->operand0;
-    //pm->psw = 
+    if (!pm->isByte) {
+        *((uint16_t *)pm->operand1) = *((uint16_t *)pm->operand0);
+    } else {
+        if (pm->mode1 == 0) {
+            int16_t *rn = (int16_t *)pm->operand1;
+            *rn = *(int8_t *)pm->operand0;
+        } else {
+            *pm->operand1 = *pm->operand0;
+        }
+    }
+    pm->psw = 
 }
 
 void syscall_string(machine_t *pm, char *str, size_t size, uint8_t id) {
