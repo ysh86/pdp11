@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <stdbool.h>
 #include <memory.h>
 #include <assert.h>
 
@@ -12,40 +13,36 @@
 #include <sys/syslimits.h>
 #endif
 
+struct machine_tag;
+typedef struct machine_tag machine_t;
+
+void mov(machine_t *pm);
+void movb(machine_t *pm);
+
 typedef struct instruction_tag {
     char *mnemonic;
     int operandNum; // 0(setd only), 1, 2, 3, 4, 5(conditional branch), 6(syscall), 7(sob only)
+    void (*exec)(machine_t *);
 } instruction_t;
 
-char *toRegName[] = {
-    "r0",
-    "r1",
-    "r2",
-    "r3",
-    "r4",
-    "r5",
-    "sp", //"r6",
-    "pc", //"r7",
-};
-
 instruction_t doubleOperand0[] = {
-    {"", 0},     // 0 000b: singleOperand0[], conditionalBranch0[]
-    {"mov", 4},  // 0 001b:
-    {"cmp", 4},  // 0 010b:
-    {"bit", 4},  // 0 011b:
-    {"bic", 4},  // 0 100b:
-    {"bis", 4},  // 0 101b:
-    {"add", 4},  // 0 110b:
-    {"", 3},     // 0 111b: doubleOperand1[], floatingPoint0[]
+    {"",    0, NULL},     // 0 000b: singleOperand0[], conditionalBranch0[]
+    {"mov", 4, mov},  // 0 001b:
+    {"cmp", 4, NULL},  // 0 010b:
+    {"bit", 4, NULL},  // 0 011b:
+    {"bic", 4, NULL},  // 0 100b:
+    {"bis", 4, NULL},  // 0 101b:
+    {"add", 4, NULL},  // 0 110b:
+    {"",    3, NULL},     // 0 111b: doubleOperand1[], floatingPoint0[]
 
-    {"", 0},     // 1 000b: singleOperand1[], conditionalBranch1[]
-    {"movb", 4}, // 1 001b:
-    {"cmpb", 4}, // 1 010b:
-    {"bitb", 4}, // 1 011b:
-    {"bicb", 4}, // 1 100b:
-    {"bisb", 4}, // 1 101b:
-    {"sub", 4},  // 1 110b:
-    {"", 4},     // 1 111b: floatingPoint1[]
+    {"",     0, NULL},     // 1 000b: singleOperand1[], conditionalBranch1[]
+    {"movb", 4, movb}, // 1 001b:
+    {"cmpb", 4, NULL}, // 1 010b:
+    {"bitb", 4, NULL}, // 1 011b:
+    {"bicb", 4, NULL}, // 1 100b:
+    {"bisb", 4, NULL}, // 1 101b:
+    {"sub",  4, NULL},  // 1 110b:
+    {"",     4, NULL},     // 1 111b: floatingPoint1[]
 };
 
 instruction_t doubleOperand1[] = {
@@ -256,7 +253,7 @@ instruction_t floatingPoint1[] = {
     {"scc", 0},
 };
 
-typedef struct machine_t_tag {
+struct machine_tag {
     // env
     char rootdir[PATH_MAX];
     char curdir[PATH_MAX];
@@ -280,7 +277,10 @@ typedef struct machine_t_tag {
     uint16_t r5;
     uint16_t sp; // r6
     uint16_t pc; // r7
-    uint16_t psw;
+    uint16_t psw; // N:negative, Z:zero, V:overflow, C:carry
+
+    // reg ptr
+    uint16_t *r[8]; // r[6]:sp, r[7]:pc
 
     //
     // CPU internal
@@ -303,13 +303,40 @@ typedef struct machine_t_tag {
     // misc:
     // 0. op(16bits)
     instruction_t *inst;
+    bool isByte;
     uint8_t mode0;
     uint8_t reg0;
     uint8_t mode1;
     uint8_t reg1;
     uint8_t offset;
     uint8_t syscallID;
-} machine_t;
+
+    // exec
+    uint8_t *operand0;
+    uint8_t *operand1;
+};
+
+void setRegPtr(machine_t *pm) {
+    pm->r[0] = &pm->r0;
+    pm->r[1] = &pm->r1;
+    pm->r[2] = &pm->r2;
+    pm->r[3] = &pm->r3;
+    pm->r[4] = &pm->r4;
+    pm->r[5] = &pm->r5;
+    pm->r[6] = &pm->sp;
+    pm->r[7] = &pm->pc;
+}
+
+char *toRegName[] = {
+    "r0",
+    "r1",
+    "r2",
+    "r3",
+    "r4",
+    "r5",
+    "sp", //"r6",
+    "pc", //"r7",
+};
 
 uint16_t fetch(machine_t *pm) {
     uint16_t bin = pm->virtualMemory[pm->pc] | (pm->virtualMemory[pm->pc + 1] << 8);
@@ -317,15 +344,100 @@ uint16_t fetch(machine_t *pm) {
     return bin;
 }
 
-void push(machine_t *pm, uint16_t value) {
-    pm->sp -= 2;
-    pm->virtualMemory[pm->sp] = value;
+uint8_t *operand(machine_t *pm, uint8_t mode, uint8_t reg) {
+    uint8_t *ret;
+
+    uint16_t *addr;
+    int16_t word;
+    uint16_t *rn = pm->r[reg];
+    switch (mode) {
+    case 0:
+        return (uint8_t *)rn;
+        break;
+    case 1:
+        return &pm->virtualMemory[*rn];
+        break;
+    case 2:
+        ret = &pm->virtualMemory[*rn];
+        if (!pm->isByte || reg == 7) {
+            (*rn) += 2;
+        } else {
+            (*rn) += 1;
+        }
+        return ret;
+        break;
+    case 3:
+        addr = (uint16_t *)&pm->virtualMemory[*rn];
+        (*rn) += 2;
+        return &pm->virtualMemory[*addr];
+        break;
+    case 4:
+        if (!pm->isByte) {
+            (*rn) -= 2;
+        } else {
+            (*rn) -= 1;
+        }
+        return &pm->virtualMemory[*rn];
+        break;
+    case 5:
+        (*rn) -= 2;
+        addr = (uint16_t *)&pm->virtualMemory[*rn];
+        return &pm->virtualMemory[*addr];
+        break;
+    case 6:
+        word = fetch(pm);
+        return &pm->virtualMemory[((int16_t)(*rn) + word) & 0xffff];
+        break;
+    case 7:
+        word = fetch(pm);
+        addr = (uint16_t *)&pm->virtualMemory[((int16_t)(*rn) + word) & 0xffff];
+        return &pm->virtualMemory[*addr];
+        break;
+    default:
+        assert(0);
+        break;
+    }
 }
 
-uint16_t pop(machine_t *pm) {
-    uint16_t value = pm->virtualMemory[pm->sp];
-    pm->sp += 2;
-    return value;
+void exec(machine_t *pm) {
+    if (pm->inst->operandNum == 4) {
+        // doubleOperand0
+        pm->operand0 = operand(pm, pm->mode0, pm->reg0);
+        pm->operand1 = operand(pm, pm->mode1, pm->reg1);
+    } else {
+        // TODO: unknown op
+        assert(0);
+    }
+    pm->inst->exec(pm);
+#if 0
+    } else if (pm->inst->operandNum == 3) {
+        // doubleOperand1, jsr
+        operand_string(pm, operand1, sizeof(operand1), pm->mode1, pm->reg1);
+    } else if (pm->inst->operandNum == 7) {
+        // doubleOperand1 sob only
+    } else if (pm->inst->operandNum == 2) {
+        // singleOperand0, singleOperand1, jmp, swab
+        operand_string(pm, operand1, sizeof(operand1), pm->mode1, pm->reg1);
+    } else if (pm->inst->operandNum == 1) {
+        // subroutine
+    } else if (pm->inst->operandNum == 5) {
+        // conditionalBranch0, conditionalBranch1
+    } else if (pm->inst->operandNum == 6) {
+        // syscall
+        syscall_string(pm, operand1, sizeof(operand1), pm->syscallID);
+    } else if (pm->inst->operandNum == 0) {
+        // floatingPoint1, systemMisc
+#endif
+}
+
+void mov(machine_t *pm) {
+    *((uint16_t *)pm->operand1) = *((uint16_t *)pm->operand0);
+    //pm->psw = 
+}
+
+void movb(machine_t *pm) {
+    //*pm->operand1 = *pm->operand0;
+    //pm->psw = 
 }
 
 void syscall_string(machine_t *pm, char *str, size_t size, uint8_t id) {
@@ -512,6 +624,7 @@ int main(int argc, char *argv[]) {
     }
 
     machine_t machine;
+    setRegPtr(&machine);
 
     //////////////////////////
     // load
@@ -644,6 +757,7 @@ int main(int argc, char *argv[]) {
 
         // decode
         machine.inst = NULL;
+        machine.isByte = false;
         machine.mode0 = (machine.bin & 0x0e00) >> 9;
         machine.reg0 = (machine.bin & 0x01c0) >> 6;
         machine.mode1 = (machine.bin & 0x0038) >> 3;
@@ -656,6 +770,9 @@ int main(int argc, char *argv[]) {
             uint8_t op_temp = op & 7;
             if (op_temp != 0 && op_temp != 7) {
                 table = doubleOperand0;
+                if (op & 8 && op_temp != 6) {
+                    machine.isByte = true;
+                }
                 break;
             }
             if (op == 7) {
@@ -685,6 +802,9 @@ int main(int argc, char *argv[]) {
                         table = singleOperand0;
                     } else {
                         table = singleOperand1;
+                        if (machine.mode0 == 5) {
+                            machine.isByte = true;
+                        }
                     }
                     op = ((machine.mode0 & 3) << 3) | machine.reg0; // (2+3) bits
                 } else {
@@ -734,7 +854,8 @@ int main(int argc, char *argv[]) {
         machine.inst = &table[op];
 
         // exec
-        disasm(&machine);
+        exec(&machine);
+        //disasm(&machine);
     }
 
     return EXIT_SUCCESS;
