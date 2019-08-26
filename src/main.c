@@ -17,6 +17,7 @@ struct machine_tag;
 typedef struct machine_tag machine_t;
 
 void mov(machine_t *pm);
+void mul(machine_t *pm);
 
 typedef struct instruction_tag {
     char *mnemonic;
@@ -45,11 +46,11 @@ instruction_t doubleOperand0[] = {
 };
 
 instruction_t doubleOperand1[] = {
-    {"mul", 3},  // 0 111 000b:
-    {"div", 3},  // 0 111 001b:
-    {"ash", 3},  // 0 111 010b:
-    {"ashc", 3}, // 0 111 011b:
-    {"xor", 3},  // 0 111 100b:
+    {"mul", 3, mul},  // 0 111 000b:
+    {"div", 3, NULL},  // 0 111 001b:
+    {"ash", 3, NULL},  // 0 111 010b:
+    {"ashc", 3, NULL}, // 0 111 011b:
+    {"xor", 3, NULL},  // 0 111 100b:
     {"", 0},     // 0 111 101b: floatingPoint0[]
     {NULL, 0},   // 0 111 110b: system?
     {"sob", 7},  // 0 111 111b:
@@ -303,6 +304,7 @@ struct machine_tag {
     // 0. op(16bits)
     instruction_t *inst;
     bool isByte;
+    bool isEven;
     uint8_t mode0;
     uint8_t reg0;
     uint8_t mode1;
@@ -403,24 +405,29 @@ void exec(machine_t *pm) {
         // doubleOperand0
         pm->operand0 = operand(pm, pm->mode0, pm->reg0);
         pm->operand1 = operand(pm, pm->mode1, pm->reg1);
+    } else if (pm->inst->operandNum == 3) {
+        // doubleOperand1, jsr
+        pm->operand0 = operand(pm, 0, pm->reg0);
+        pm->operand1 = operand(pm, pm->mode1, pm->reg1);
     } else {
         // TODO: unknown op
         assert(0);
     }
     pm->inst->exec(pm);
 #if 0
-    } else if (pm->inst->operandNum == 3) {
-        // doubleOperand1, jsr
-        operand_string(pm, operand1, sizeof(operand1), pm->mode1, pm->reg1);
     } else if (pm->inst->operandNum == 7) {
         // doubleOperand1 sob only
+        operand_string(pm, operand0, sizeof(operand0), 0, pm->reg0);
+        snprintf(operand1, sizeof(operand1), "%04x", pm->pc - (pm->offset << 1));
     } else if (pm->inst->operandNum == 2) {
         // singleOperand0, singleOperand1, jmp, swab
         operand_string(pm, operand1, sizeof(operand1), pm->mode1, pm->reg1);
     } else if (pm->inst->operandNum == 1) {
         // subroutine
+        operand_string(pm, operand1, sizeof(operand1), 0, pm->reg1);
     } else if (pm->inst->operandNum == 5) {
         // conditionalBranch0, conditionalBranch1
+        snprintf(operand1, sizeof(operand1), "%04x", pm->pc + ((int8_t)pm->offset << 1));
     } else if (pm->inst->operandNum == 6) {
         // syscall
         syscall_string(pm, operand1, sizeof(operand1), pm->syscallID);
@@ -440,6 +447,18 @@ void mov(machine_t *pm) {
             *pm->operand1 = *pm->operand0;
         }
     }
+
+    pm->psw = 
+}
+
+void mul(machine_t *pm) {
+    int32_t temp = *((int16_t *)pm->operand0) * *((int16_t *)pm->operand1);
+    if (pm->isEven) {
+        *((int32_t *)pm->operand0) = temp;
+    } else {
+        *((int16_t *)pm->operand0) = temp & 0x0000ffff;
+    }
+
     pm->psw = 
 }
 
@@ -494,7 +513,7 @@ void operand_string(machine_t *pm, char *str, size_t size, uint8_t mode, uint8_t
         } else {
             // pc
             word = fetch(pm);
-            snprintf(str, size, "%04x", word & 0xffff);
+            snprintf(str, size, "%04x", word & 0xffff); // TODO: disasm
         }
         break;
     case 4:
@@ -509,7 +528,7 @@ void operand_string(machine_t *pm, char *str, size_t size, uint8_t mode, uint8_t
             snprintf(str, size, "%d(%s)", word, rn);
         } else {
             // pc
-            snprintf(str, size, "%04x", (word + (int16_t)(pm->pc)) & 0xffff);
+            snprintf(str, size, "%04x", (word + (int16_t)(pm->pc)) & 0xffff); // TODO: disasm
         }
         break;
     case 7:
@@ -518,7 +537,7 @@ void operand_string(machine_t *pm, char *str, size_t size, uint8_t mode, uint8_t
             snprintf(str, size, "*%d(%s)", word, rn);
         } else {
             // pc
-            snprintf(str, size, "*0x%04x", (word + (int16_t)(pm->pc)) & 0xffff);
+            snprintf(str, size, "*0x%04x", (word + (int16_t)(pm->pc)) & 0xffff); // TODO: disasm
         }
         break;
     default:
@@ -761,6 +780,7 @@ int main(int argc, char *argv[]) {
         // decode
         machine.inst = NULL;
         machine.isByte = false;
+        machine.isEven = false;
         machine.mode0 = (machine.bin & 0x0e00) >> 9;
         machine.reg0 = (machine.bin & 0x01c0) >> 6;
         machine.mode1 = (machine.bin & 0x0038) >> 3;
@@ -785,6 +805,10 @@ int main(int argc, char *argv[]) {
                     if (op == 7) {
                         // sob
                         machine.offset &= 0x3f; // 6 bits
+                    } else {
+                        if ((machine.reg0 & 1) == 0) {
+                            machine.isEven = true;
+                        }
                     }
                 } else {
                     table = floatingPoint0;
