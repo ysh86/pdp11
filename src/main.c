@@ -339,8 +339,41 @@ char *toRegName[] = {
     "pc", //"r7",
 };
 
+inline uint16_t read16(bool isReg, const uint8_t *p) {
+    if (isReg) {
+        return *(const uint16_t *)p;
+    } else {
+        return p[0] | (p[1] << 8);
+    }
+}
+
+inline void write16(bool isReg, uint8_t *p, uint16_t data) {
+    if (isReg) {
+        *(uint16_t *)p = data;
+    } else {
+        p[0] = data & 0xff;
+        p[1] = data >> 8;
+    }
+}
+
+inline uint8_t read8(bool isReg, const uint8_t *p) {
+    if (isReg) {
+        return *(const uint16_t *)p & 0xff;
+    } else {
+        return p[0];
+    }
+}
+
+inline void write8(bool isReg, uint8_t *p, uint8_t data) {
+    if (isReg) {
+        *(int16_t *)p = (int8_t)data;
+    } else {
+        p[0] = data;
+    }
+}
+
 uint16_t fetch(machine_t *pm) {
-    uint16_t bin = pm->virtualMemory[pm->pc] | (pm->virtualMemory[pm->pc + 1] << 8);
+    uint16_t bin = read16(false, &pm->virtualMemory[pm->pc]);
     pm->pc += 2;
     return bin;
 }
@@ -348,7 +381,7 @@ uint16_t fetch(machine_t *pm) {
 uint8_t *operand(machine_t *pm, uint8_t mode, uint8_t reg) {
     uint8_t *ret;
 
-    uint16_t *addr;
+    uint16_t addr;
     int16_t word;
     uint16_t *rn = pm->r[reg];
     switch (mode) {
@@ -368,9 +401,9 @@ uint8_t *operand(machine_t *pm, uint8_t mode, uint8_t reg) {
         return ret;
         break;
     case 3:
-        addr = (uint16_t *)&pm->virtualMemory[*rn];
+        addr = read16(false, &pm->virtualMemory[*rn]);
         (*rn) += 2;
-        return &pm->virtualMemory[*addr];
+        return &pm->virtualMemory[addr];
         break;
     case 4:
         if (!pm->isByte) {
@@ -382,8 +415,8 @@ uint8_t *operand(machine_t *pm, uint8_t mode, uint8_t reg) {
         break;
     case 5:
         (*rn) -= 2;
-        addr = (uint16_t *)&pm->virtualMemory[*rn];
-        return &pm->virtualMemory[*addr];
+        addr = read16(false, &pm->virtualMemory[*rn]);
+        return &pm->virtualMemory[addr];
         break;
     case 6:
         word = fetch(pm);
@@ -391,8 +424,8 @@ uint8_t *operand(machine_t *pm, uint8_t mode, uint8_t reg) {
         break;
     case 7:
         word = fetch(pm);
-        addr = (uint16_t *)&pm->virtualMemory[((int16_t)(*rn) + word) & 0xffff];
-        return &pm->virtualMemory[*addr];
+        addr = read16(false, &pm->virtualMemory[((int16_t)(*rn) + word) & 0xffff]);
+        return &pm->virtualMemory[addr];
         break;
     default:
         assert(0);
@@ -438,25 +471,24 @@ void exec(machine_t *pm) {
 
 void mov(machine_t *pm) {
     if (!pm->isByte) {
-        *((uint16_t *)pm->operand1) = *((uint16_t *)pm->operand0);
+        uint16_t src = read16((pm->mode0 == 0), pm->operand0);
+        write16((pm->mode1 == 0), pm->operand1, src);
     } else {
-        if (pm->mode1 == 0) {
-            int16_t *rn = (int16_t *)pm->operand1;
-            *rn = *(int8_t *)pm->operand0;
-        } else {
-            *pm->operand1 = *pm->operand0;
-        }
+        uint8_t src = read8((pm->mode0 == 0), pm->operand0);
+        write8((pm->mode1 == 0), pm->operand1, src);
     }
 
     pm->psw = 
 }
 
 void mul(machine_t *pm) {
-    int32_t temp = *((int16_t *)pm->operand0) * *((int16_t *)pm->operand1);
+    int32_t m = (int16_t)read16(true, pm->operand0) * (int16_t)read16((pm->mode1 == 0), pm->operand1);
+    uint32_t temp = m;
     if (pm->isEven) {
-        *((int32_t *)pm->operand0) = temp;
+        write16(true, pm->operand0, temp & 0x0000ffff);
+        write16(true, pm->operand0 + 2, temp >> 16);
     } else {
-        *((int16_t *)pm->operand0) = temp & 0x0000ffff;
+        write16(true, pm->operand0, temp & 0x0000ffff);
     }
 
     pm->psw = 
@@ -666,6 +698,7 @@ int main(int argc, char *argv[]) {
         fclose(fp);
         return EXIT_FAILURE;
     }
+    // TODO: endian
 
     size = sizeof(machine.virtualMemory);
     n = fread(machine.virtualMemory, 1, size, fp);
@@ -734,20 +767,24 @@ int main(int argc, char *argv[]) {
     machine.sp -= 2 + na * 2 + 2 + nc; // argc, argv[0]...argv[na-1], -1, buf
 
     // push args
-    uint16_t *sp = (uint16_t *)&machine.virtualMemory[machine.sp];
-    char *pbuf = (char *)(sp + 1 + na + 1);
-    *sp++ = na; // argc
+    uint8_t *sp = &machine.virtualMemory[machine.sp];
+    char *pbuf = (char *)(sp + 2 + na * 2 + 2);
+    write16(false, sp, na); // argc
+    sp += 2;
     for (int i = 1; i < argc; i++) { // argv & buf
         char *pa = argv[i];
-        *sp++ = (uintptr_t)pbuf - (uintptr_t)machine.virtualMemory;
+        uint16_t addr = (uintptr_t)pbuf - (uintptr_t)machine.virtualMemory;
+        write16(false, sp, addr);
+        sp += 2;
         do {
             *pbuf++ = *pa;
         } while (*pa++ != '\0');
     }
-    if ((uintptr_t)pbuf & 1) {
+    uint16_t addr = (uintptr_t)pbuf - (uintptr_t)machine.virtualMemory;
+    if (addr & 1) {
         *pbuf = '\0'; // alignment
     }
-    *sp = -1; // -1
+    write16(false, sp, 0xffff); // -1
 
 #if 0
     // debug dump
