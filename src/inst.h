@@ -24,6 +24,8 @@ extern instruction_t clearSet[];
 
 void exec(pmachine_t pm);
 
+void nop(pmachine_t pm);
+
 void mov(pmachine_t pm);
 void cmp(pmachine_t pm);
 void bit(pmachine_t pm);
@@ -53,3 +55,18 @@ void bvc(pmachine_t pm);
 void bvs(pmachine_t pm);
 void bcc(pmachine_t pm);
 void bcs(pmachine_t pm);
+
+void clr(pmachine_t pm);
+void com(pmachine_t pm);
+void inc(pmachine_t pm);
+void dec(pmachine_t pm);
+void neg(pmachine_t pm);
+void adc(pmachine_t pm);
+void sbc(pmachine_t pm);
+void tst(pmachine_t pm);
+
+void jmp(pmachine_t pm);
+void jsr(pmachine_t pm);
+void rts(pmachine_t pm);
+
+void sys(pmachine_t pm);

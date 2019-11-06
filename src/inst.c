@@ -4,6 +4,7 @@
 #include "inst.h"
 #include "machine.h"
 #include "util.h"
+#include "syscall.h"
 
 instruction_t doubleOperand0[] = {
     {"",    0, NULL},     // 0 000b: singleOperand0[], conditionalBranch0[]
@@ -38,24 +39,24 @@ instruction_t doubleOperand1[] = {
 
 instruction_t singleOperand0[] = {
     // 004r
-    {"jsr", 3},  // 0 000 100 000b: r0
-    {"jsr", 3},  // 0 000 100 001b: r1
-    {"jsr", 3},  // 0 000 100 010b: r2
-    {"jsr", 3},  // 0 000 100 011b: r3
-    {"jsr", 3},  // 0 000 100 100b: r4
-    {"jsr", 3},  // 0 000 100 101b: r5
-    {"jsr", 3},  // 0 000 100 110b: sp
-    {"jsr", 3},  // 0 000 100 111b: pc
+    {"jsr", 3, jsr},  // 0 000 100 000b: r0
+    {"jsr", 3, jsr},  // 0 000 100 001b: r1
+    {"jsr", 3, jsr},  // 0 000 100 010b: r2
+    {"jsr", 3, jsr},  // 0 000 100 011b: r3
+    {"jsr", 3, jsr},  // 0 000 100 100b: r4
+    {"jsr", 3, jsr},  // 0 000 100 101b: r5
+    {"jsr", 3, jsr},  // 0 000 100 110b: sp
+    {"jsr", 3, jsr},  // 0 000 100 111b: pc
 
     // 005?
-    {"clr", 2},  // 0 000 101 000b:
-    {"com", 2},  // 0 000 101 001b:
-    {"inc", 2},  // 0 000 101 010b:
-    {"dec", 2},  // 0 000 101 011b:
-    {"neg", 2},  // 0 000 101 100b:
-    {"adc", 2},  // 0 000 101 101b:
-    {"sbc", 2},  // 0 000 101 110b:
-    {"tst", 2},  // 0 000 101 111b:
+    {"clr", 2, clr},  // 0 000 101 000b:
+    {"com", 2, com},  // 0 000 101 001b:
+    {"inc", 2, inc},  // 0 000 101 010b:
+    {"dec", 2, dec},  // 0 000 101 011b:
+    {"neg", 2, neg},  // 0 000 101 100b:
+    {"adc", 2, adc},  // 0 000 101 101b:
+    {"sbc", 2, sbc},  // 0 000 101 110b:
+    {"tst", 2, tst},  // 0 000 101 111b:
     // 006?
     // TODO: not implemented
     {"ror", 2},  // 0 000 110 000b:
@@ -83,20 +84,20 @@ instruction_t singleOperand1[] = {
     {"emt", 2},  // 1 000 100 001b:
     {"emt", 2},  // 1 000 100 010b:
     {"emt", 2},  // 1 000 100 011b:
-    {"sys", 6},  // 1 000 100 100b:
+    {"sys", 6, sys},  // 1 000 100 100b:
     {"trap", 2}, // 1 000 100 101b:
     {"trap", 2}, // 1 000 100 110b:
     {"trap", 2}, // 1 000 100 111b:
 
     // 105?
-    {"clrb", 2}, // 1 000 101 000b:
-    {"comb", 2}, // 1 000 101 001b:
-    {"incb", 2}, // 1 000 101 010b:
-    {"decb", 2}, // 1 000 101 011b:
-    {"negb", 2}, // 1 000 101 100b:
-    {"adcb", 2}, // 1 000 101 101b:
-    {"sbcb", 2}, // 1 000 101 110b:
-    {"tstb", 2}, // 1 000 101 111b:
+    {"clrb", 2, clr}, // 1 000 101 000b:
+    {"comb", 2, com}, // 1 000 101 001b:
+    {"incb", 2, inc}, // 1 000 101 010b:
+    {"decb", 2, dec}, // 1 000 101 011b:
+    {"negb", 2, neg}, // 1 000 101 100b:
+    {"adcb", 2, adc}, // 1 000 101 101b:
+    {"sbcb", 2, sbc}, // 1 000 101 110b:
+    {"tstb", 2, tst}, // 1 000 101 111b:
     // 106?
     // TODO: not implemented
     {"rorb", 2}, // 1 000 110 000b:
@@ -151,10 +152,10 @@ instruction_t systemMisc[] = {
     {"rtt", 0},   // 0 000 000 000 000 110b:
     {NULL, 0},    // 0 000 000 000 000 111b:
 
-    {"jmp", 2},   // 0 000 000 001b:
+    {"jmp", 2, jmp},   // 0 000 000 001b:
 
     // subroutine, condition
-    {"rts", 1},   // 0 000 000 010 000b:
+    {"rts", 1, rts},   // 0 000 000 010 000b:
     {NULL, 0},    // 0 000 000 010 010b:
     {"clear", 0}, // 0 000 000 010 100 000b: // TODO: not implemented
     {"set", 0},   // 0 000 000 010 110 000b: // TODO: not implemented
@@ -186,7 +187,7 @@ instruction_t floatingPoint1[] = {
     {NULL, 0},   // 1 111 000 000 000 111b:
 
     {NULL, 0},   // 1 111 000 000 001 000b:
-    {"setd", 0}, // 1 111 000 000 001 001b:
+    {"setd", 0, nop}, // 1 111 000 000 001 001b:
     {NULL, 0},   // 1 111 000 000 001 010b:
     {NULL, 0},   // 1 111 000 000 001 011b:
 
@@ -313,27 +314,36 @@ void exec(machine_t *pm) {
         // doubleOperand1 sob only
         pm->operand0 = operand(pm, 0, pm->reg0);
         //pm->operand1 = &pm->offset;
+    } else if (pm->inst->operandNum == 2) {
+        // singleOperand0, singleOperand1, jmp, swab
+        pm->operand1 = operand(pm, pm->mode1, pm->reg1);
+    } else if (pm->inst->operandNum == 1) {
+        // subroutine
+        pm->operand1 = operand(pm, 0, pm->reg1);
     } else if (pm->inst->operandNum == 5) {
         // conditionalBranch0, conditionalBranch1
         //pm->operand0 = &pm->offset;
+    } else if (pm->inst->operandNum == 6) {
+        // syscall
+    } else if (pm->inst->operandNum == 0) {
+        // floatingPoint1, systemMisc
     } else {
         // TODO: unknown op
         assert(0);
     }
+
+    if (pm->inst->exec == NULL) {
+        fprintf(stderr, "/ [ERR] Not implemented, %04x: %04x\n", pm->addr, pm->bin);
+        assert(pm->inst->exec);
+    }
+
+    //fprintf(stderr, "%04x: %s ", pm->addr, pm->inst->mnemonic);
     pm->inst->exec(pm);
-#if 0
-    } else if (pm->inst->operandNum == 2) {
-        // singleOperand0, singleOperand1, jmp, swab
-        operand_string(pm, operand1, sizeof(operand1), pm->mode1, pm->reg1);
-    } else if (pm->inst->operandNum == 1) {
-        // subroutine
-        operand_string(pm, operand1, sizeof(operand1), 0, pm->reg1);
-    } else if (pm->inst->operandNum == 6) {
-        // syscall
-        syscall_string(pm, operand1, sizeof(operand1), pm->syscallID);
-    } else if (pm->inst->operandNum == 0) {
-        // floatingPoint1, systemMisc
-#endif
+    //fprintf(stderr, "(pc: %04x)\n", pm->pc);
+}
+
+void nop(machine_t *pm) {
+    // nothing to do
 }
 
 void mov(machine_t *pm) {
@@ -825,61 +835,467 @@ void sob(machine_t *pm) {
 }
 
 void br(machine_t *pm) {
-    //pm->pc += ((int8_t)pm->offset << 1);
+    pm->pc += ((int8_t)pm->offset << 1);
 }
 
 void bne(machine_t *pm) {
-
+    if (!isZ(pm)) {
+        pm->pc += ((int8_t)pm->offset << 1);
+    }
 }
 
 void beq(machine_t *pm) {
-
+    if (isZ(pm)) {
+        pm->pc += ((int8_t)pm->offset << 1);
+    }
 }
 
 void bge(machine_t *pm) {
-
+    if (!(isN(pm) ^ isV(pm))) {
+        pm->pc += ((int8_t)pm->offset << 1);
+    }
 }
 
 void blt(machine_t *pm) {
-
+    if (isN(pm) ^ isV(pm)) {
+        pm->pc += ((int8_t)pm->offset << 1);
+    }
 }
 
 void bgt(machine_t *pm) {
-
+    if (!(isZ(pm) || (isN(pm) ^ isV(pm)))) {
+        pm->pc += ((int8_t)pm->offset << 1);
+    }
 }
 
 void ble(machine_t *pm) {
-
+    if (isZ(pm) || (isN(pm) ^ isV(pm))) {
+        pm->pc += ((int8_t)pm->offset << 1);
+    }
 }
 
 void bpl(machine_t *pm) {
-
+    if (!isN(pm)) {
+        pm->pc += ((int8_t)pm->offset << 1);
+    }
 }
 
 void bmi(machine_t *pm) {
-
+    if (isN(pm)) {
+        pm->pc += ((int8_t)pm->offset << 1);
+    }
 }
 
 void bhi(machine_t *pm) {
-
+    if (!(isC(pm) || isZ(pm))) {
+        pm->pc += ((int8_t)pm->offset << 1);
+    }
 }
 
 void blos(machine_t *pm) {
-
+    if (isC(pm) || isZ(pm)) {
+        pm->pc += ((int8_t)pm->offset << 1);
+    }
 }
 
 void bvc(machine_t *pm) {
-
+    if (!isV(pm)) {
+        pm->pc += ((int8_t)pm->offset << 1);
+    }
 }
 
 void bvs(machine_t *pm) {
-
+    if (isV(pm)) {
+        pm->pc += ((int8_t)pm->offset << 1);
+    }
 }
 
+// bhis
 void bcc(machine_t *pm) {
-
+    if (!isC(pm)) {
+        pm->pc += ((int8_t)pm->offset << 1);
+    }
 }
 
+// blo
 void bcs(machine_t *pm) {
+    if (isC(pm)) {
+        pm->pc += ((int8_t)pm->offset << 1);
+    }
+}
 
+void clr(machine_t *pm) {
+    if (!pm->isByte) {
+        write16((pm->mode1 == 0), pm->operand1, 0);
+    } else {
+        write8((pm->mode1 == 0), pm->operand1, 0);
+    }
+
+    clearN(pm);
+    setZ(pm);
+    clearV(pm);
+    clearC(pm);
+}
+
+void com(machine_t *pm) {
+    if (!pm->isByte) {
+        uint16_t dst16 = read16((pm->mode1 == 0), pm->operand1);
+        dst16 = ~dst16;
+        write16((pm->mode1 == 0), pm->operand1, dst16);
+
+        if (msb16(dst16)) {
+            setN(pm);
+        } else {
+            clearN(pm);
+        }
+        if (dst16 == 0) {
+            setZ(pm);
+        } else {
+            clearZ(pm);
+        }
+        clearV(pm);
+        setC(pm);
+    } else {
+        uint8_t dst8 = read8((pm->mode1 == 0), pm->operand1);
+        dst8 = ~dst8;
+        write8((pm->mode1 == 0), pm->operand1, dst8);
+
+        if (msb8(dst8)) {
+            setN(pm);
+        } else {
+            clearN(pm);
+        }
+        if (dst8 == 0) {
+            setZ(pm);
+        } else {
+            clearZ(pm);
+        }
+        clearV(pm);
+        setC(pm);
+    }
+}
+
+void inc(machine_t *pm) {
+    if (!pm->isByte) {
+        int16_t dst16 = read16((pm->mode1 == 0), pm->operand1);
+        int16_t result16 = dst16 + 1;
+        write16((pm->mode1 == 0), pm->operand1, result16);
+
+        if (result16 < 0) {
+            setN(pm);
+        } else {
+            clearN(pm);
+        }
+        if (result16 == 0) {
+            setZ(pm);
+        } else {
+            clearZ(pm);
+        }
+        if (dst16 == 0x7fff) {
+            setV(pm);
+        } else {
+            clearV(pm);
+        }
+    } else {
+        int8_t dst8 = read8((pm->mode1 == 0), pm->operand1);
+        int8_t result8 = dst8 + 1;
+        write8((pm->mode1 == 0), pm->operand1, result8);
+
+        if (result8 < 0) {
+            setN(pm);
+        } else {
+            clearN(pm);
+        }
+        if (result8 == 0) {
+            setZ(pm);
+        } else {
+            clearZ(pm);
+        }
+        if (dst8 == 0x7f) {
+            setV(pm);
+        } else {
+            clearV(pm);
+        }
+    }
+}
+
+void dec(machine_t *pm) {
+    if (!pm->isByte) {
+        int16_t dst16 = read16((pm->mode1 == 0), pm->operand1);
+        int16_t result16 = dst16 - 1;
+        write16((pm->mode1 == 0), pm->operand1, result16);
+
+        if (result16 < 0) {
+            setN(pm);
+        } else {
+            clearN(pm);
+        }
+        if (result16 == 0) {
+            setZ(pm);
+        } else {
+            clearZ(pm);
+        }
+        if ((uint16_t)dst16 == 0x8000) {
+            setV(pm);
+        } else {
+            clearV(pm);
+        }
+    } else {
+        int8_t dst8 = read8((pm->mode1 == 0), pm->operand1);
+        int8_t result8 = dst8 - 1;
+        write8((pm->mode1 == 0), pm->operand1, result8);
+
+        if (result8 < 0) {
+            setN(pm);
+        } else {
+            clearN(pm);
+        }
+        if (result8 == 0) {
+            setZ(pm);
+        } else {
+            clearZ(pm);
+        }
+        if ((uint8_t)dst8 == 0x80) {
+            setV(pm);
+        } else {
+            clearV(pm);
+        }
+    }
+}
+
+void neg(machine_t *pm) {
+    if (!pm->isByte) {
+        int16_t dst16 = read16((pm->mode1 == 0), pm->operand1);
+        int16_t result16 = -dst16;
+        write16((pm->mode1 == 0), pm->operand1, result16);
+
+        if (result16 < 0) {
+            setN(pm);
+        } else {
+            clearN(pm);
+        }
+        if (result16 == 0) {
+            setZ(pm);
+        } else {
+            clearZ(pm);
+        }
+        if ((uint16_t)result16 == 0x8000) {
+            setV(pm);
+        } else {
+            clearV(pm);
+        }
+        if (result16 == 0) {
+            clearC(pm);
+        } else {
+            setC(pm);
+        }
+    } else {
+        int8_t dst8 = read8((pm->mode1 == 0), pm->operand1);
+        int8_t result8 = -dst8;
+        write8((pm->mode1 == 0), pm->operand1, result8);
+
+        if (result8 < 0) {
+            setN(pm);
+        } else {
+            clearN(pm);
+        }
+        if (result8 == 0) {
+            setZ(pm);
+        } else {
+            clearZ(pm);
+        }
+        if ((uint8_t)result8 == 0x80) {
+            setV(pm);
+        } else {
+            clearV(pm);
+        }
+        if (result8 == 0) {
+            clearC(pm);
+        } else {
+            setC(pm);
+        }
+    }
+}
+
+void adc(machine_t *pm) {
+    if (!pm->isByte) {
+        int16_t dst16 = read16((pm->mode1 == 0), pm->operand1);
+        int16_t result16 = dst16 + (isC(pm) ? 1 : 0);
+        write16((pm->mode1 == 0), pm->operand1, result16);
+
+        if (result16 < 0) {
+            setN(pm);
+        } else {
+            clearN(pm);
+        }
+        if (result16 == 0) {
+            setZ(pm);
+        } else {
+            clearZ(pm);
+        }
+        if (dst16 == 0x7fff && isC(pm)) {
+            setV(pm);
+        } else {
+            clearV(pm);
+        }
+        if ((uint16_t)dst16 == 0xffff && isC(pm)) {
+            setC(pm);
+        } else {
+            clearC(pm);
+        }
+    } else {
+        int8_t dst8 = read8((pm->mode1 == 0), pm->operand1);
+        int8_t result8 = dst8 + (isC(pm) ? 1 : 0);
+        write8((pm->mode1 == 0), pm->operand1, result8);
+
+        if (result8 < 0) {
+            setN(pm);
+        } else {
+            clearN(pm);
+        }
+        if (result8 == 0) {
+            setZ(pm);
+        } else {
+            clearZ(pm);
+        }
+        if (dst8 == 0x7f && isC(pm)) {
+            setV(pm);
+        } else {
+            clearV(pm);
+        }
+        if ((uint8_t)dst8 == 0xff && isC(pm)) {
+            setC(pm);
+        } else {
+            clearC(pm);
+        }
+    }
+}
+
+void sbc(machine_t *pm) {
+    if (!pm->isByte) {
+        int16_t dst16 = read16((pm->mode1 == 0), pm->operand1);
+        int16_t result16 = dst16 - (isC(pm) ? 1 : 0);
+        write16((pm->mode1 == 0), pm->operand1, result16);
+
+        if (result16 < 0) {
+            setN(pm);
+        } else {
+            clearN(pm);
+        }
+        if (result16 == 0) {
+            setZ(pm);
+        } else {
+            clearZ(pm);
+        }
+        if ((uint16_t)dst16 == 0x8000) {
+            setV(pm);
+        } else {
+            clearV(pm);
+        }
+        if (dst16 == 0 && isC(pm)) {
+            clearC(pm);
+        } else {
+            setC(pm);
+        }
+    } else {
+        int8_t dst8 = read8((pm->mode1 == 0), pm->operand1);
+        int8_t result8 = dst8 - (isC(pm) ? 1 : 0);
+        write8((pm->mode1 == 0), pm->operand1, result8);
+
+        if (result8 < 0) {
+            setN(pm);
+        } else {
+            clearN(pm);
+        }
+        if (result8 == 0) {
+            setZ(pm);
+        } else {
+            clearZ(pm);
+        }
+        if ((uint8_t)dst8 == 0x80) {
+            setV(pm);
+        } else {
+            clearV(pm);
+        }
+        if (dst8 == 0 && isC(pm)) {
+            clearC(pm);
+        } else {
+            setC(pm);
+        }
+    }
+}
+
+void tst(machine_t *pm) {
+    if (!pm->isByte) {
+        int16_t dst16 = read16((pm->mode1 == 0), pm->operand1);
+
+        if (dst16 < 0) {
+            setN(pm);
+        } else {
+            clearN(pm);
+        }
+        if (dst16 == 0) {
+            setZ(pm);
+        } else {
+            clearZ(pm);
+        }
+    } else {
+        int8_t dst8 = read8((pm->mode1 == 0), pm->operand1);
+
+        if (dst8 < 0) {
+            setN(pm);
+        } else {
+            clearN(pm);
+        }
+        if (dst8 == 0) {
+            setZ(pm);
+        } else {
+            clearZ(pm);
+        }
+    }
+
+    clearV(pm);
+    clearC(pm);
+}
+
+void jmp(machine_t *pm) {
+    if (pm->mode1 == 0) {
+        assert(0); // illegal instruction
+    }
+
+    uint16_t addr = (pm->operand1 - pm->virtualMemory) & 0xffff;
+    if (addr & 1) {
+        assert(0); // boundary error
+    }
+
+    pm->pc = addr;
+}
+
+void jsr(machine_t *pm) {
+    // pm->operand0 reg
+    // pm->operand1
+}
+
+void rts(machine_t *pm) {
+    // pm->operand1 reg
+}
+
+void sys(machine_t *pm) {
+    if (pm->syscallID == 0) {
+        // indir
+        uint16_t addr = fetch(pm);
+        //fprintf(stderr, "0; 0x%04x ", addr);
+
+        uint16_t oldpc = pm->pc;
+        {
+            pm->pc = addr;
+            pm->bin = fetch(pm);
+            pm->syscallID = pm->bin & 0x3f;
+            assert(pm->bin - pm->syscallID == 0104400);
+            syscall(pm);
+        }
+        pm->pc = oldpc;
+    } else {
+        syscall(pm);
+    }
 }
