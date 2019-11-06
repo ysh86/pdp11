@@ -1,5 +1,7 @@
 #include <stdio.h>
+#include <stdint.h>
 #include <assert.h>
+#include <unistd.h>
 
 #include "syscall.h"
 #include "machine.h"
@@ -14,13 +16,13 @@ void syscall(machine_t *pm) {
         break;
     case 1:
         // exit
-        fprintf(stderr, "exit ");
+        _exit((int16_t)pm->r0);
         break;
     case 4:
         // write
         word0 = fetch(pm);
         word1 = fetch(pm);
-        fprintf(stderr, "write; 0x%04x; 0x%04x ", word0, word1);
+        pm->r0 = write((int16_t)pm->r0, &pm->virtualMemory[word0], word1) & 0xffff;
         break;
     default:
         // TODO: not implemented
