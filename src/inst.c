@@ -1272,12 +1272,19 @@ void jmp(machine_t *pm) {
 }
 
 void jsr(machine_t *pm) {
-    // pm->operand0 reg
-    // pm->operand1
+    uint16_t addr = (pm->operand1 - pm->virtualMemory) & 0xffff;
+    uint16_t reg = read16(true, pm->operand0);
+    pm->sp -= 2;
+    write16(false, &pm->virtualMemory[pm->sp], reg);
+    write16(true, pm->operand0, pm->pc);
+    pm->pc = addr;
 }
 
 void rts(machine_t *pm) {
-    // pm->operand1 reg
+    pm->pc = read16(true, pm->operand1);
+    uint16_t temp = read16(false, &pm->virtualMemory[pm->sp]);
+    pm->sp += 2;
+    write16(true, pm->operand1, temp);
 }
 
 void sys(machine_t *pm) {
