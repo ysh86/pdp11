@@ -390,7 +390,7 @@ int main(int argc, char *argv[]) {
                         table = singleOperand0;
                     } else {
                         table = singleOperand1;
-                        if (machine.mode0 == 5) {
+                        if (machine.mode0 == 5 || (machine.mode0 == 6 && machine.reg0 < 4)) {
                             machine.isByte = true;
                         }
                     }

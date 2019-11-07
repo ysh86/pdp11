@@ -59,14 +59,14 @@ instruction_t singleOperand0[] = {
     {"tst", 2, tst},  // 0 000 101 111b:
     // 006?
     // TODO: not implemented
-    {"ror", 2},  // 0 000 110 000b:
-    {"rol", 2},  // 0 000 110 001b:
-    {"asr", 2},  // 0 000 110 010b:
-    {"asl", 2},  // 0 000 110 011b:
+    {"ror", 2, ror},  // 0 000 110 000b:
+    {"rol", 2, rol},  // 0 000 110 001b:
+    {"asr", 2, asr},  // 0 000 110 010b:
+    {"asl", 2, asl},  // 0 000 110 011b:
     {"mark", 2}, // 0 000 110 100b:
     {"mfpi", 2}, // 0 000 110 101b:
     {"mtpi", 2}, // 0 000 110 110b:
-    {"sxt", 2},  // 0 000 110 111b:
+    {"sxt", 2, sxt},  // 0 000 110 111b:
     // 007?
     {NULL, 0},  // 0 000 111 000b:
     {NULL, 0},  // 0 000 111 001b:
@@ -100,10 +100,10 @@ instruction_t singleOperand1[] = {
     {"tstb", 2, tst}, // 1 000 101 111b:
     // 106?
     // TODO: not implemented
-    {"rorb", 2}, // 1 000 110 000b:
-    {"rolb", 2}, // 1 000 110 001b:
-    {"asrb", 2}, // 1 000 110 010b:
-    {"aslb", 2}, // 1 000 110 011b:
+    {"rorb", 2, ror}, // 1 000 110 000b:
+    {"rolb", 2, rol}, // 1 000 110 001b:
+    {"asrb", 2, asr}, // 1 000 110 010b:
+    {"aslb", 2, asl}, // 1 000 110 011b:
     {"mtps", 2}, // 1 000 110 100b:
     {"mfpd", 2}, // 1 000 110 101b:
     {"mtpd", 2}, // 1 000 110 110b:
@@ -137,8 +137,8 @@ instruction_t conditionalBranch1[] = {
     {"blos", 5, blos}, // 1 000 001 1b:
     {"bvc", 5, bvc},  // 1 000 010 0b:
     {"bvs", 5, bvs},  // 1 000 010 1b:
-    {"bcc", 5, bcc}, // 1 000 011 0b: alias bhis
-    {"bcs", 5, bcs},  // 1 000 011 1b: alias blo
+    {"bcc", 5, bcc}, // 1 000 011 0b: alias bhis, bec
+    {"bcs", 5, bcs},  // 1 000 011 1b: alias blo, bes
 };
 
 instruction_t systemMisc[] = {
@@ -160,7 +160,7 @@ instruction_t systemMisc[] = {
     {"clear", 0}, // 0 000 000 010 100 000b: // TODO: not implemented
     {"set", 0},   // 0 000 000 010 110 000b: // TODO: not implemented
 
-    {"swab", 2},  // 0 000 000 011b: // TODO: not implemented
+    {"swab", 2, myswab},  // 0 000 000 011b:
 };
 
 instruction_t floatingPoint0[] = {
@@ -1254,6 +1254,257 @@ void tst(machine_t *pm) {
         }
     }
 
+    clearV(pm);
+    clearC(pm);
+}
+
+void ror(machine_t *pm) {
+    bool c;
+    if (!pm->isByte) {
+        int16_t dst16 = (int16_t)read16((pm->mode1 == 0), pm->operand1);
+
+        c = dst16 & 1;
+        int16_t result16 = dst16 >> 1;
+        if (isC(pm)) {
+            result16 |= 0x8000;
+        } else {
+            result16 &= 0x7fff;
+        }
+        write16((pm->mode1 == 0), pm->operand1, result16);
+
+        if (result16 < 0) {
+            setN(pm);
+        } else {
+            clearN(pm);
+        }
+        if (result16 == 0) {
+            setZ(pm);
+        } else {
+            clearZ(pm);
+        }
+    } else {
+        int8_t dst8 = (int8_t)read8((pm->mode1 == 0), pm->operand1);
+
+        c = dst8 & 1;
+        int8_t result8 = dst8 >> 1;
+        if (isC(pm)) {
+            result8 |= 0x80;
+        } else {
+            result8 &= 0x7f;
+        }
+        write8((pm->mode1 == 0), pm->operand1, result8);
+
+        if (result8 < 0) {
+            setN(pm);
+        } else {
+            clearN(pm);
+        }
+        if (result8 == 0) {
+            setZ(pm);
+        } else {
+            clearZ(pm);
+        }
+    }
+
+    if (isN(pm) ^ c) {
+        setV(pm);
+    } else {
+        clearV(pm);
+    }
+    if (c) {
+        setC(pm);
+    } else {
+        clearC(pm);
+    }
+}
+
+void rol(machine_t *pm) {
+    bool c;
+    if (!pm->isByte) {
+        int16_t dst16 = (int16_t)read16((pm->mode1 == 0), pm->operand1);
+
+        c = msb16(dst16);
+        int16_t result16 = dst16 << 1;
+        if (isC(pm)) {
+            result16 |= 1;
+        } else {
+            result16 &= 0xfffe;
+        }
+        write16((pm->mode1 == 0), pm->operand1, result16);
+
+        if (result16 < 0) {
+            setN(pm);
+        } else {
+            clearN(pm);
+        }
+        if (result16 == 0) {
+            setZ(pm);
+        } else {
+            clearZ(pm);
+        }
+    } else {
+        int8_t dst8 = (int8_t)read8((pm->mode1 == 0), pm->operand1);
+
+        c = msb8(dst8);
+        int8_t result8 = dst8 << 1;
+        if (isC(pm)) {
+            result8 |= 1;
+        } else {
+            result8 &= 0xfe;
+        }
+        write8((pm->mode1 == 0), pm->operand1, result8);
+
+        if (result8 < 0) {
+            setN(pm);
+        } else {
+            clearN(pm);
+        }
+        if (result8 == 0) {
+            setZ(pm);
+        } else {
+            clearZ(pm);
+        }
+    }
+
+    if (isN(pm) ^ c) {
+        setV(pm);
+    } else {
+        clearV(pm);
+    }
+    if (c) {
+        setC(pm);
+    } else {
+        clearC(pm);
+    }
+}
+
+void asr(machine_t *pm) {
+    bool c;
+    if (!pm->isByte) {
+        int16_t dst16 = (int16_t)read16((pm->mode1 == 0), pm->operand1);
+
+        c = dst16 & 1;
+        int16_t result16 = dst16 >> 1;
+        write16((pm->mode1 == 0), pm->operand1, result16);
+
+        if (result16 < 0) {
+            setN(pm);
+        } else {
+            clearN(pm);
+        }
+        if (result16 == 0) {
+            setZ(pm);
+        } else {
+            clearZ(pm);
+        }
+    } else {
+        int8_t dst8 = (int8_t)read8((pm->mode1 == 0), pm->operand1);
+
+        c = dst8 & 1;
+        int8_t result8 = dst8 >> 1;
+        write8((pm->mode1 == 0), pm->operand1, result8);
+
+        if (result8 < 0) {
+            setN(pm);
+        } else {
+            clearN(pm);
+        }
+        if (result8 == 0) {
+            setZ(pm);
+        } else {
+            clearZ(pm);
+        }
+    }
+
+    if (isN(pm) ^ c) {
+        setV(pm);
+    } else {
+        clearV(pm);
+    }
+    if (c) {
+        setC(pm);
+    } else {
+        clearC(pm);
+    }
+}
+
+void asl(machine_t *pm) {
+    bool c;
+    if (!pm->isByte) {
+        int16_t dst16 = (int16_t)read16((pm->mode1 == 0), pm->operand1);
+
+        c = msb16(dst16);
+        int16_t result16 = dst16 << 1;
+        write16((pm->mode1 == 0), pm->operand1, result16);
+
+        if (result16 < 0) {
+            setN(pm);
+        } else {
+            clearN(pm);
+        }
+        if (result16 == 0) {
+            setZ(pm);
+        } else {
+            clearZ(pm);
+        }
+    } else {
+        int8_t dst8 = (int8_t)read8((pm->mode1 == 0), pm->operand1);
+
+        c = msb8(dst8);
+        int8_t result8 = dst8 << 1;
+        write8((pm->mode1 == 0), pm->operand1, result8);
+
+        if (result8 < 0) {
+            setN(pm);
+        } else {
+            clearN(pm);
+        }
+        if (result8 == 0) {
+            setZ(pm);
+        } else {
+            clearZ(pm);
+        }
+    }
+
+    if (isN(pm) ^ c) {
+        setV(pm);
+    } else {
+        clearV(pm);
+    }
+    if (c) {
+        setC(pm);
+    } else {
+        clearC(pm);
+    }
+}
+
+void sxt(machine_t *pm) {
+    uint16_t result = 0;
+    if (isN(pm)) {
+        result = 0xffff;
+    }
+    write16((pm->mode1 == 0), pm->operand1, result);
+
+    if (!isN(pm)) {
+        setZ(pm);
+    }
+}
+
+void myswab(machine_t *pm) {
+    uint16_t dst16 = read16((pm->mode1 == 0), pm->operand1);
+    uint16_t result16 = (dst16 << 8) | (dst16 >> 8);
+    write16((pm->mode1 == 0), pm->operand1, result16);
+
+    if (result16 & 0x80) {
+        setN(pm);
+    } else {
+        clearN(pm);
+    }
+    if ((result16 & 0xff) == 0) {
+        setZ(pm);
+    } else {
+        clearZ(pm);
+    }
     clearV(pm);
     clearC(pm);
 }

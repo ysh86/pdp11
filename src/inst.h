@@ -72,6 +72,13 @@ void adc(machine_t *pm);
 void sbc(machine_t *pm);
 void tst(machine_t *pm);
 
+void ror(machine_t *pm);
+void rol(machine_t *pm);
+void asr(machine_t *pm);
+void asl(machine_t *pm);
+void sxt(machine_t *pm);
+void myswab(machine_t *pm);
+
 void jmp(machine_t *pm);
 void jsr(machine_t *pm);
 void rts(machine_t *pm);
