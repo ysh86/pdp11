@@ -6,7 +6,7 @@
 #include "syscall.h"
 #include "machine.h"
 
-void syscall(machine_t *pm) {
+void mysyscall(machine_t *pm) {
     uint16_t word0 = 0;
     uint16_t word1 = 0;
     switch (pm->syscallID) {

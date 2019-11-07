@@ -1,6 +1,9 @@
 #pragma once
 
 struct machine_tag;
-typedef struct machine_tag* pmachine_t;
+#ifndef _MACHINE_T_
+#define _MACHINE_T_
+typedef struct machine_tag machine_t;
+#endif
 
-void syscall(pmachine_t pm);
+void mysyscall(machine_t *pm);

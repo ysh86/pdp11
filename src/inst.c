@@ -1299,10 +1299,10 @@ void sys(machine_t *pm) {
             pm->bin = fetch(pm);
             pm->syscallID = pm->bin & 0x3f;
             assert(pm->bin - pm->syscallID == 0104400);
-            syscall(pm);
+            mysyscall(pm);
         }
         pm->pc = oldpc;
     } else {
-        syscall(pm);
+        mysyscall(pm);
     }
 }

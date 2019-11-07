@@ -12,9 +12,12 @@
 #endif
 
 struct instruction_tag;
-typedef struct instruction_tag* pinstruction_t;
+#ifndef _INSTRUCTION_T_
+#define _INSTRUCTION_T_
+typedef struct instruction_tag instruction_t;
+#endif
 
-typedef struct machine_tag {
+struct machine_tag {
     // env
     char rootdir[PATH_MAX];
     char curdir[PATH_MAX];
@@ -64,7 +67,7 @@ typedef struct machine_tag {
     // 6. op(10bits) syscallID(6bits)
     // misc:
     // 0. op(16bits)
-    pinstruction_t inst;
+    instruction_t *inst;
     bool isByte;
     bool isEven;
     uint8_t mode0;
@@ -77,7 +80,11 @@ typedef struct machine_tag {
     // exec
     uint8_t *operand0;
     uint8_t *operand1;
-} machine_t;
+};
+#ifndef _MACHINE_T_
+#define _MACHINE_T_
+typedef struct machine_tag machine_t;
+#endif
 
 void setRegPtr(machine_t *pm);
 extern char *toRegName[];
