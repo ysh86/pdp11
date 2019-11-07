@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <memory.h>
+#include <string.h>
 #include <assert.h>
 
 #include "machine.h"
@@ -226,7 +227,6 @@ int main(int argc, char *argv[]) {
         fclose(fp);
         return EXIT_FAILURE;
     }
-    // TODO: support 0x0108(0410) mode (8KB alignment)
     fclose(fp);
     fp = NULL;
 
@@ -236,14 +236,19 @@ int main(int argc, char *argv[]) {
     machine.textStart = 0;
     machine.textEnd = machine.textStart + machine.aoutHeader[1];
     machine.dataStart = machine.textEnd;
+    if (machine.aoutHeader[0] == 0x0108) {
+        // 8KB alignment
+        machine.dataStart = (machine.dataStart + 0x1fff) & ~0x1fff;
+        memmove(&machine.virtualMemory[machine.dataStart], &machine.virtualMemory[machine.textEnd], machine.aoutHeader[2]);
+    }
     machine.dataEnd = machine.dataStart + machine.aoutHeader[2];
     machine.bssStart = machine.dataEnd;
     machine.bssEnd = machine.bssStart + machine.aoutHeader[3];
 
-    // TODO: validate
-    assert(machine.aoutHeader[0] == 0x0107);
+    assert(machine.aoutHeader[0] == 0x0107 || machine.aoutHeader[0] == 0x0108);
     assert(machine.aoutHeader[1] > 0);
     assert(machine.bssEnd <= 0xfffe);
+    // TODO: validate other fields
 
     printf("/ aout header\n");
     printf("/\n");
