@@ -10,6 +10,7 @@
 
 #include "syscall.h"
 #include "machine.h"
+#include "util.h"
 
 void mysyscall(machine_t *pm) {
     uint16_t word0 = 0;
@@ -119,7 +120,43 @@ void mysyscall(machine_t *pm) {
         // exec
         word0 = fetch(pm);
         word1 = fetch(pm);
-        assert(0);
+        // calc size of args & copy args
+        uint16_t na = 0;
+        {
+            uint16_t nc = 0;
+            uint8_t *argv = &pm->virtualMemory[word1];
+            uint16_t addr = read16(false, argv);
+            argv += 2;
+            while (addr != 0) {
+                const char *pa = (const char *)&pm->virtualMemory[addr];
+                addr = read16(false, argv);
+                argv += 2;
+                na++;
+
+                do {
+                    pm->args[nc++] = *pa;
+                    if (nc >= sizeof(pm->args) - 1) {
+                        //fprintf(stderr, "/ [ERR] Too big args\n");
+                        setC(pm); // error bit
+                        goto outer;
+                    }
+                } while (*pa++ != '\0');
+            }
+            outer:
+            if (nc & 1) {
+                pm->args[nc++] = '\0';
+            }
+        }
+        if (isC(pm)) {
+            pm->r0 = 0xffff;
+        } else {
+            pm->argc = na;
+            pm->name = (const char *)&pm->virtualMemory[word0];
+
+            pm->r0 = 0;
+            pm->pc = pm->textEnd; // goto the end of the current text, then load the new text
+            clearC(pm);
+        }
         break;
     case 15:
         // chmod
