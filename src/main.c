@@ -21,14 +21,87 @@ void syscall_string(machine_t *pm, char *str, size_t size, uint8_t id) {
         // exit
         snprintf(str, size, "exit");
         break;
+    case 3:
+        // read
+        word0 = fetch(pm);
+        word1 = fetch(pm);
+        snprintf(str, size, "read; 0x%04x; 0x%04x", word0, word1);
+        break;
     case 4:
         // write
         word0 = fetch(pm);
         word1 = fetch(pm);
         snprintf(str, size, "write; 0x%04x; 0x%04x", word0, word1);
         break;
+    case 5:
+        // open
+        word0 = fetch(pm);
+        word1 = fetch(pm);
+        snprintf(str, size, "open; 0x%04x; 0x%04x", word0, word1);
+        break;
+    case 6:
+        // close
+        snprintf(str, size, "close");
+        break;
+    case 8:
+        // creat
+        word0 = fetch(pm);
+        word1 = fetch(pm);
+        snprintf(str, size, "creat; 0x%04x; 0x%04x", word0, word1);
+        break;
+    case 9:
+        // link
+        word0 = fetch(pm);
+        word1 = fetch(pm);
+        snprintf(str, size, "link; 0x%04x; 0x%04x", word0, word1);
+        break;
+    case 10:
+        // unlink
+        word0 = fetch(pm);
+        snprintf(str, size, "unlink; 0x%04x", word0);
+        break;
+    case 11:
+        // exec
+        word0 = fetch(pm);
+        word1 = fetch(pm);
+        snprintf(str, size, "exec; 0x%04x; 0x%04x", word0, word1);
+        break;
+    case 15:
+        // chmod
+        word0 = fetch(pm);
+        word1 = fetch(pm);
+        snprintf(str, size, "chmod; 0x%04x; 0x%04x", word0, word1);
+        break;
+    case 17:
+        // break
+        word0 = fetch(pm);
+        snprintf(str, size, "break; 0x%04x", word0);
+        break;
+    case 18:
+        // stat
+        word0 = fetch(pm);
+        word1 = fetch(pm);
+        snprintf(str, size, "stat; 0x%04x; 0x%04x", word0, word1);
+        break;
+    case 19:
+        // seek
+        word0 = fetch(pm);
+        word1 = fetch(pm);
+        snprintf(str, size, "seek; 0x%04x; 0x%04x", word0, word1);
+        break;
+    case 20:
+        // getpid
+        snprintf(str, size, "getpid");
+        break;
+    case 48:
+        // signal
+        word0 = fetch(pm);
+        word1 = fetch(pm);
+        snprintf(str, size, "sig; 0x%04x; 0x%04x", word0, word1);
+        break;
     default:
         // TODO: not implemented
+        fprintf(stderr, "/ [ERR] Not implemented, %04x: %04x, sys %d\n", pm->addr, pm->bin, id);
         assert(0);
         break;
     }
@@ -201,11 +274,32 @@ int main(int argc, char *argv[]) {
     setRegPtr(&machine);
 
     //////////////////////////
+    // env
+    //////////////////////////
+    // calc size of args & copy args
+    machine.argc = argc - 1;
+    uint16_t nc = 0;
+    for (int i = 0; i < machine.argc; i++) {
+        char *pa = argv[i + 1];
+        do {
+            machine.args[nc++] = *pa;
+            if (nc >= sizeof(machine.args) - 1) {
+                fprintf(stderr, "/ [ERR] Too big args\n");
+                return EXIT_FAILURE;
+            }
+        } while (*pa++ != '\0');
+    }
+    if (nc & 1) {
+        machine.args[nc++] = '\0';
+    }
+    machine.name = (const char *)machine.args;
+
+    //////////////////////////
     // load
     //////////////////////////
-    FILE *fp = fopen(argv[1], "rb");
+    FILE *fp = fopen(machine.name, "rb");
     if (fp == NULL) {
-        fprintf(stderr, "Invalid input file\n");
+        fprintf(stderr, "/ [ERR] Invalid input file\n");
         return EXIT_FAILURE;
     }
 
@@ -214,7 +308,7 @@ int main(int argc, char *argv[]) {
     size = sizeof(machine.aoutHeader);
     n = fread(machine.aoutHeader, 1, size, fp);
     if (n != size) {
-        fprintf(stderr, "Can't read file\n");
+        fprintf(stderr, "/ [ERR] Can't read file\n");
         fclose(fp);
         return EXIT_FAILURE;
     }
@@ -223,7 +317,7 @@ int main(int argc, char *argv[]) {
     size = sizeof(machine.virtualMemory);
     n = fread(machine.virtualMemory, 1, size, fp);
     if (n <= 0) {
-        fprintf(stderr, "Can't read file\n");
+        fprintf(stderr, "/ [ERR] Can't read file\n");
         fclose(fp);
         return EXIT_FAILURE;
     }
@@ -244,6 +338,7 @@ int main(int argc, char *argv[]) {
     machine.dataEnd = machine.dataStart + machine.aoutHeader[2];
     machine.bssStart = machine.dataEnd;
     machine.bssEnd = machine.bssStart + machine.aoutHeader[3];
+    machine.brk = machine.bssEnd;
 
     assert(machine.aoutHeader[0] == 0x0107 || machine.aoutHeader[0] == 0x0108);
     assert(machine.aoutHeader[1] > 0);
@@ -276,27 +371,17 @@ int main(int argc, char *argv[]) {
     machine.pc = machine.textStart;
     machine.psw = 0;
 
-    // calc size of args
-    uint16_t na = argc - 1;
-    uint16_t nc = 0;
-    for (int i = 1; i < argc; i++) {
-        char *pa = argv[i];
-        do {
-            nc++;
-        } while (*pa++ != '\0');
-    }
-    if (nc & 1) {
-        nc++;
-    }
-    machine.sp -= 2 + na * 2 + 2 + nc; // argc, argv[0]...argv[na-1], -1, buf
-
     // push args
+    const uint16_t na = machine.argc;
+    machine.sp -= 2 + na * 2 + 2 + nc; // argc, argv[0]...argv[na-1], -1, buf
     uint8_t *sp = &machine.virtualMemory[machine.sp];
     char *pbuf = (char *)(sp + 2 + na * 2 + 2);
-    write16(false, sp, na); // argc
+    // argc
+    write16(false, sp, na);
     sp += 2;
-    for (int i = 1; i < argc; i++) { // argv & buf
-        char *pa = argv[i];
+    // argv & buf
+    const char *pa = (const char *)machine.args;
+    for (int i = 0; i < na; i++) {
         uint16_t addr = (uintptr_t)pbuf - (uintptr_t)machine.virtualMemory;
         write16(false, sp, addr);
         sp += 2;

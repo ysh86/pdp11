@@ -19,6 +19,9 @@ typedef struct instruction_tag instruction_t;
 
 struct machine_tag {
     // env
+    int argc;
+    uint8_t args[512];
+    const char *name;
     char rootdir[PATH_MAX];
     char curdir[PATH_MAX];
     uint16_t aoutHeader[8];
@@ -31,6 +34,7 @@ struct machine_tag {
     uint16_t dataEnd;
     uint16_t bssStart;
     uint16_t bssEnd;
+    uint16_t brk;
 
     // regs
     uint16_t r0;
