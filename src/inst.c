@@ -157,8 +157,8 @@ instruction_t systemMisc[] = {
     // subroutine, condition
     {"rts", 1, rts},   // 0 000 000 010 000b:
     {NULL, 0},    // 0 000 000 010 010b:
-    {"clear", 0}, // 0 000 000 010 100 000b: // TODO: not implemented
-    {"set", 0},   // 0 000 000 010 110 000b: // TODO: not implemented
+    {"clear", 0}, // 0 000 000 010 100 000b:
+    {"set", 0},   // 0 000 000 010 110 000b:
 
     {"swab", 2, myswab},  // 0 000 000 011b:
 };
@@ -197,41 +197,40 @@ instruction_t floatingPoint1[] = {
     {NULL, 0},   // 1 111 000 000 001 111b:
 };
 
-// TODO: not implemented
 instruction_t clearSet[] = {
-    {"nop", 0},
-    {"cl" "c", 0},
-    {"cl" "v", 0},
-    {"cl" "vc", 0},
-    {"cl" "z", 0},
-    {"cl" "zc", 0},
-    {"cl" "zv", 0},
-    {"cl" "zvc", 0},
-    {"cl" "n", 0},
-    {"cl" "nc", 0},
-    {"cl" "nv", 0},
-    {"cl" "nvc", 0},
-    {"cl" "nz", 0},
-    {"cl" "nzc", 0},
-    {"cl" "nzv", 0},
-    {"ccc", 0},
+    {"nop", 0, myclearset},
+    {"cl" "c", 0, myclearset},
+    {"cl" "v", 0, myclearset},
+    {"cl" "vc", 0, myclearset},
+    {"cl" "z", 0, myclearset},
+    {"cl" "zc", 0, myclearset},
+    {"cl" "zv", 0, myclearset},
+    {"cl" "zvc", 0, myclearset},
+    {"cl" "n", 0, myclearset},
+    {"cl" "nc", 0, myclearset},
+    {"cl" "nv", 0, myclearset},
+    {"cl" "nvc", 0, myclearset},
+    {"cl" "nz", 0, myclearset},
+    {"cl" "nzc", 0, myclearset},
+    {"cl" "nzv", 0, myclearset},
+    {"ccc", 0, myclearset},
 
-    {"nop", 0},
-    {"se" "c", 0},
-    {"se" "v", 0},
-    {"se" "vc", 0},
-    {"se" "z", 0},
-    {"se" "zc", 0},
-    {"se" "zv", 0},
-    {"se" "zvc", 0},
-    {"se" "n", 0},
-    {"se" "nc", 0},
-    {"se" "nv", 0},
-    {"se" "nvc", 0},
-    {"se" "nz", 0},
-    {"se" "nzc", 0},
-    {"se" "nzv", 0},
-    {"scc", 0},
+    {"nop", 0, myclearset},
+    {"se" "c", 0, myclearset},
+    {"se" "v", 0, myclearset},
+    {"se" "vc", 0, myclearset},
+    {"se" "z", 0, myclearset},
+    {"se" "zc", 0, myclearset},
+    {"se" "zv", 0, myclearset},
+    {"se" "zvc", 0, myclearset},
+    {"se" "n", 0, myclearset},
+    {"se" "nc", 0, myclearset},
+    {"se" "nv", 0, myclearset},
+    {"se" "nvc", 0, myclearset},
+    {"se" "nz", 0, myclearset},
+    {"se" "nzc", 0, myclearset},
+    {"se" "nzv", 0, myclearset},
+    {"scc", 0, myclearset},
 };
 
 
@@ -1555,5 +1554,25 @@ void sys(machine_t *pm) {
         pm->pc = oldpc;
     } else {
         mysyscall(pm);
+    }
+}
+
+void myclearset(machine_t *pm) {
+    bool isSet = pm->bin & 0x10;
+    bool N = pm->bin & 8;
+    bool Z = pm->bin & 4;
+    bool V = pm->bin & 2;
+    bool C = pm->bin & 1;
+
+    if (isSet) {
+        if (N) setN(pm);
+        if (Z) setZ(pm);
+        if (V) setV(pm);
+        if (C) setC(pm);
+    } else {
+        if (N) clearN(pm);
+        if (Z) clearZ(pm);
+        if (V) clearV(pm);
+        if (C) clearC(pm);
     }
 }

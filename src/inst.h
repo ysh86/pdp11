@@ -84,3 +84,5 @@ void jsr(machine_t *pm);
 void rts(machine_t *pm);
 
 void sys(machine_t *pm);
+
+void myclearset(machine_t *pm);
