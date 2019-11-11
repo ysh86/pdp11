@@ -76,7 +76,7 @@ void mysyscall(machine_t *pm) {
     ssize_t sret;
     int ret;
 
-    //fprintf(stderr, "/ [DBG] %04x: %04x, sys %d\n", pm->addr, pm->bin, pm->syscallID);
+    //fprintf(stderr, "/ [DBG] sys %d, %04x: %04x\n", pm->syscallID, pm->addr, pm->bin);
     switch (pm->syscallID) {
     case 0:
         // indir
@@ -324,7 +324,7 @@ void mysyscall(machine_t *pm) {
         // signal
         word0 = fetch(pm);
         word1 = fetch(pm);
-        fprintf(stderr, "/ [WRN] ignore signal %04x: %04x, sys %d; %d; 0x%04x\n", pm->addr, pm->bin, pm->syscallID, word0, word1);
+        fprintf(stderr, "/ [WRN] ignore signal: sys %d; %d; 0x%04x, %04x: %04x\n", pm->syscallID, word0, word1, pm->addr, pm->bin);
         {
             pm->r0 = 0; // terminate
             clearC(pm);
@@ -332,7 +332,7 @@ void mysyscall(machine_t *pm) {
         break;
     default:
         // TODO: not implemented
-        fprintf(stderr, "/ [ERR] Not implemented, %04x: %04x, sys %d\n", pm->addr, pm->bin, pm->syscallID);
+        fprintf(stderr, "/ [ERR] Not implemented: sys %d, %04x: %04x\n", pm->syscallID, pm->addr, pm->bin);
         assert(0);
         break;
     }

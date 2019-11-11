@@ -546,6 +546,7 @@ int main(int argc, char *argv[]) {
 
         if (table == NULL || table[op].mnemonic == NULL) {
             // TODO: unknown op or not implemented
+            fprintf(stderr, "/ [ERR] Unknown: %04x: %04x\n", machine.addr, machine.bin);
             assert(0);
         }
         machine.inst = &table[op];

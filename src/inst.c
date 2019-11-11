@@ -301,6 +301,11 @@ static uint8_t *operand(machine_t *pm, uint8_t mode, uint8_t reg) {
 
 
 void exec(machine_t *pm) {
+    // debug
+    //uint16_t addr0 = pm->sp;
+    //uint16_t sp0 = read16(false, &pm->virtualMemory[pm->sp]);
+    //fprintf(stderr, "%04x: %s ", pm->addr, pm->inst->mnemonic);
+
     if (pm->inst->operandNum == 4) {
         // doubleOperand0
         pm->operand0 = operand(pm, pm->mode0, pm->reg0);
@@ -332,13 +337,16 @@ void exec(machine_t *pm) {
     }
 
     if (pm->inst->exec == NULL) {
-        fprintf(stderr, "/ [ERR] Not implemented, %04x: %04x\n", pm->addr, pm->bin);
+        fprintf(stderr, "/ [ERR] Not implemented: %s, %04x: %04x\n", pm->inst->mnemonic, pm->addr, pm->bin);
         assert(pm->inst->exec);
     }
 
-    //fprintf(stderr, "%04x: %s ", pm->addr, pm->inst->mnemonic);
     pm->inst->exec(pm);
-    //fprintf(stderr, "(pc: %04x)\n", pm->pc);
+
+    // debug
+    //uint16_t addr1 = pm->sp;
+    //uint16_t sp1 = read16(false, &pm->virtualMemory[pm->sp]);
+    //fprintf(stderr, "(sp: %04x:%04x -> %04x:%04x, pc: %04x)\n", addr0, sp0, addr1, sp1, pm->pc);
 }
 
 void nop(machine_t *pm) {
