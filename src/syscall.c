@@ -4,6 +4,7 @@
 
 #include <unistd.h>
 #include <fcntl.h>
+#include <time.h>
 #include <sys/errno.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -220,6 +221,14 @@ void mysyscall(machine_t *pm) {
             clearC(pm);
         }
         break;
+    case 13:
+        // time
+        {
+            time_t t = time(NULL);
+            pm->r0 = (t >> 16) & 0xffff;
+            pm->r1 = t & 0xffff;
+        }
+        break;
     case 15:
         // chmod
         word0 = fetch(pm);
@@ -293,6 +302,23 @@ void mysyscall(machine_t *pm) {
     case 20:
         // getpid
         pm->r0 = getpid() & 0xffff;
+        break;
+    case 28:
+        // fstat
+        word0 = fetch(pm);
+        {
+            struct stat s;
+            ret = fstat((int16_t)pm->r0, &s);
+            if (ret < 0) {
+                pm->r0 = errno & 0xffff;
+                setC(pm); // error bit
+            } else {
+                pm->r0 = ret & 0xffff;
+                clearC(pm);
+                uint8_t *pi = &pm->virtualMemory[word1];
+                convstat(pi, &s);
+            }
+        }
         break;
     case 48:
         // signal
