@@ -6,6 +6,7 @@
 
 #include "machine.h"
 #include "inst.h"
+#include "syscall.h"
 #include "util.h"
 
 void syscall_string(machine_t *pm, char *str, size_t size, uint8_t id) {
@@ -265,8 +266,8 @@ int main(int argc, char *argv[]) {
     //////////////////////////
     // usage
     //////////////////////////
-    if (argc < 2) {
-        fprintf(stderr, "Usage: pdp11 aout\n");
+    if (argc < 3) {
+        fprintf(stderr, "Usage: pdp11 rootdir aout\n");
         return EXIT_FAILURE;
     }
 
@@ -276,11 +277,20 @@ int main(int argc, char *argv[]) {
     //////////////////////////
     // env
     //////////////////////////
+    // skip vm cmd
+    argv++;
+    argc--;
+    // root dir
+    snprintf(machine.rootdir, sizeof(machine.rootdir), "%s", *argv);
+    argv++;
+    argc--;
+    // cur dir
+    snprintf(machine.curdir, sizeof(machine.curdir), "./");
     // calc size of args & copy args
-    machine.argc = argc - 1;
+    machine.argc = argc;
     uint16_t nc = 0;
     for (int i = 0; i < machine.argc; i++) {
-        char *pa = argv[i + 1];
+        char *pa = argv[i];
         do {
             machine.args[nc++] = *pa;
             if (nc >= sizeof(machine.args) - 1) {
@@ -297,7 +307,12 @@ int main(int argc, char *argv[]) {
     //////////////////////////
     // load
     //////////////////////////
-    FILE *fp = fopen(machine.name, "rb");
+    FILE *fp;
+    char name[PATH_MAX];
+    reload:
+    addroot(name, sizeof(name), machine.name, machine.rootdir);
+    printf("\n/ %s (orig: %s)\n", name, machine.name);
+    fp = fopen(name, "rb");
     if (fp == NULL) {
         fprintf(stderr, "/ [ERR] Invalid input file\n");
         return EXIT_FAILURE;
@@ -415,7 +430,7 @@ int main(int argc, char *argv[]) {
     while (1) {
         // TODO: debug
         //assert(machine.pc < machine.textEnd);
-        if (machine.pc >= machine.textEnd) {
+        if (machine.pc >= 0xffff) {
             break;
         }
 
@@ -530,6 +545,8 @@ int main(int argc, char *argv[]) {
         exec(&machine);
         //disasm(&machine);
     }
+    goto reload;
 
-    return EXIT_SUCCESS;
+    // never reach
+    return EXIT_FAILURE;
 }

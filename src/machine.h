@@ -19,11 +19,11 @@ typedef struct instruction_tag instruction_t;
 
 struct machine_tag {
     // env
+    char rootdir[PATH_MAX];
+    char curdir[PATH_MAX];
     int argc;
     uint8_t args[512];
     const char *name;
-    char rootdir[PATH_MAX];
-    char curdir[PATH_MAX];
     uint16_t aoutHeader[8];
 
     // memory

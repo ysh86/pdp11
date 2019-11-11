@@ -12,9 +12,66 @@
 #include "machine.h"
 #include "util.h"
 
+void convstat(uint8_t *pi, const struct stat* ps) {
+    struct inode {
+        char  minor;         /* +0: minor device of i-node */
+        char  major;         /* +1: major device */
+        int   inumber;       /* +2 */
+        int   flags;         /* +4: see below */
+        char  nlinks;        /* +6: number of links to file */
+        char  uid;           /* +7: user ID of owner */
+        char  gid;           /* +8: group ID of owner */
+        char  size0;         /* +9: high byte of 24-bit size */
+        int   size1;         /* +10: low word of 24-bit size */
+        int   addr[8];       /* +12: block numbers or device number */
+        int   actime[2];     /* +28: time of last access */
+        int   modtime[2];    /* +32: time of last modification */
+    } i;
+    /* flags
+    100000   i-node is allocated
+    060000   2-bit file type:
+        000000   plain file
+        040000   directory
+        020000   character-type special file
+        060000   block-type special file.
+    010000   large file
+    004000   set user-ID on execution
+    002000   set group-ID on execution
+    001000   save text image after execution
+    000400   read (owner)
+    000200   write (owner)
+    000100   execute (owner)
+    000070   read, write, execute (group)
+    000007   read, write, execute (others)
+    */
+    pi[0] = ps->st_dev & 0xff; // pseudo
+    pi[1] = (ps->st_dev >> 8) & 0xff; // pseudo
+    pi[2] = ps->st_ino & 0xff;
+    pi[3] = (ps->st_ino >> 8) & 0xff;
+    //pi[4];
+    //pi[5];
+    pi[6] = ps->st_nlink & 0xff;
+    pi[7] = ps->st_uid & 0xff;
+    pi[8] = ps->st_gid & 0xff;
+    pi[9] = (ps->st_size >> 16) & 0xff;
+    pi[10] = ps->st_size & 0xff;
+    pi[11] = (ps->st_size >> 8) & 0xff;
+    //pi[12];
+    pi[28];
+    pi[29];
+    pi[30];
+    pi[31];
+    pi[32];
+    pi[33];
+    pi[34];
+    pi[35];
+}
+
 void mysyscall(machine_t *pm) {
     uint16_t word0 = 0;
     uint16_t word1 = 0;
+    char path0[PATH_MAX];
+    char path1[PATH_MAX];
     ssize_t sret;
     int ret;
 
@@ -58,7 +115,8 @@ void mysyscall(machine_t *pm) {
         // open
         word0 = fetch(pm);
         word1 = fetch(pm);
-        ret = open((const char *)&pm->virtualMemory[word0], word1);
+        addroot(path0, sizeof(path0), (const char *)&pm->virtualMemory[word0], pm->rootdir);
+        ret = open(path0, word1);
         if (ret < 0) {
             pm->r0 = errno & 0xffff;
             setC(pm); // error bit
@@ -82,7 +140,8 @@ void mysyscall(machine_t *pm) {
         // creat
         word0 = fetch(pm);
         word1 = fetch(pm);
-        ret = creat((const char *)&pm->virtualMemory[word0], word1);
+        addroot(path0, sizeof(path0), (const char *)&pm->virtualMemory[word0], pm->rootdir);
+        ret = creat(path0, word1);
         if (ret < 0) {
             pm->r0 = errno & 0xffff;
             setC(pm); // error bit
@@ -95,7 +154,9 @@ void mysyscall(machine_t *pm) {
         // link
         word0 = fetch(pm);
         word1 = fetch(pm);
-        ret = link((const char *)&pm->virtualMemory[word0], (const char *)&pm->virtualMemory[word1]);
+        addroot(path0, sizeof(path0), (const char *)&pm->virtualMemory[word0], pm->rootdir);
+        addroot(path1, sizeof(path1), (const char *)&pm->virtualMemory[word1], pm->rootdir);
+        ret = link(path0, path1);
         if (ret < 0) {
             pm->r0 = errno & 0xffff;
             setC(pm); // error bit
@@ -107,7 +168,8 @@ void mysyscall(machine_t *pm) {
     case 10:
         // unlink
         word0 = fetch(pm);
-        ret = unlink((const char *)&pm->virtualMemory[word0]);
+        addroot(path0, sizeof(path0), (const char *)&pm->virtualMemory[word0], pm->rootdir);
+        ret = unlink(path0);
         if (ret < 0) {
             pm->r0 = errno & 0xffff;
             setC(pm); // error bit
@@ -154,7 +216,7 @@ void mysyscall(machine_t *pm) {
             pm->name = (const char *)&pm->virtualMemory[word0];
 
             pm->r0 = 0;
-            pm->pc = pm->textEnd; // goto the end of the current text, then load the new text
+            pm->pc = 0xffff; // goto the end of the memory, then load the new text
             clearC(pm);
         }
         break;
@@ -162,7 +224,8 @@ void mysyscall(machine_t *pm) {
         // chmod
         word0 = fetch(pm);
         word1 = fetch(pm);
-        ret = chmod((const char *)&pm->virtualMemory[word0], word1);
+        addroot(path0, sizeof(path0), (const char *)&pm->virtualMemory[word0], pm->rootdir);
+        ret = chmod(path0, word1);
         if (ret < 0) {
             pm->r0 = errno & 0xffff;
             setC(pm); // error bit
@@ -188,68 +251,20 @@ void mysyscall(machine_t *pm) {
         // stat
         word0 = fetch(pm);
         word1 = fetch(pm);
-        struct stat s;
-        ret = stat((const char *)&pm->virtualMemory[word0], &s);
-        if (ret < 0) {
-            pm->r0 = errno & 0xffff;
-            setC(pm); // error bit
-        } else {
-            pm->r0 = ret & 0xffff;
-            clearC(pm);
+        {
+            addroot(path0, sizeof(path0), (const char *)&pm->virtualMemory[word0], pm->rootdir);
 
-            struct inode {
-                char  minor;         /* +0: minor device of i-node */
-                char  major;         /* +1: major device */
-                int   inumber;       /* +2 */
-                int   flags;         /* +4: see below */
-                char  nlinks;        /* +6: number of links to file */
-                char  uid;           /* +7: user ID of owner */
-                char  gid;           /* +8: group ID of owner */
-                char  size0;         /* +9: high byte of 24-bit size */
-                int   size1;         /* +10: low word of 24-bit size */
-                int   addr[8];       /* +12: block numbers or device number */
-                int   actime[2];     /* +28: time of last access */
-                int   modtime[2];    /* +32: time of last modification */
-            } i;
-            /* flags
-            100000   i-node is allocated
-            060000   2-bit file type:
-                000000   plain file
-                040000   directory
-                020000   character-type special file
-                060000   block-type special file.
-            010000   large file
-            004000   set user-ID on execution
-            002000   set group-ID on execution
-            001000   save text image after execution
-            000400   read (owner)
-            000200   write (owner)
-            000100   execute (owner)
-            000070   read, write, execute (group)
-            000007   read, write, execute (others)
-            */
-            uint8_t *pi = &pm->virtualMemory[word1];
-            pi[0] = s.st_dev & 0xff; // pseudo
-            pi[1] = (s.st_dev >> 8) & 0xff; // pseudo
-            pi[2] = s.st_ino & 0xff;
-            pi[3] = (s.st_ino >> 8) & 0xff;
-            //pi[4];
-            //pi[5];
-            pi[6] = s.st_nlink & 0xff;
-            pi[7] = s.st_uid & 0xff;
-            pi[8] = s.st_gid & 0xff;
-            pi[9] = (s.st_size >> 16) & 0xff;
-            pi[10] = s.st_size & 0xff;
-            pi[11] = (s.st_size >> 8) & 0xff;
-            //pi[12];
-            pi[28];
-            pi[29];
-            pi[30];
-            pi[31];
-            pi[32];
-            pi[33];
-            pi[34];
-            pi[35];
+            struct stat s;
+            ret = stat(path0, &s);
+            if (ret < 0) {
+                pm->r0 = errno & 0xffff;
+                setC(pm); // error bit
+            } else {
+                pm->r0 = ret & 0xffff;
+                clearC(pm);
+                uint8_t *pi = &pm->virtualMemory[word1];
+                convstat(pi, &s);
+            }
         }
         break;
     case 19:

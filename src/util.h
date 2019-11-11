@@ -2,6 +2,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <stdio.h>
 
 static inline uint16_t read16(bool isReg, const uint8_t *p) {
     if (isReg) {
@@ -33,5 +34,13 @@ static inline void write8(bool isReg, uint8_t *p, uint8_t data) {
         *(int16_t *)p = (int8_t)data;
     } else {
         p[0] = data;
+    }
+}
+
+static inline void addroot(char *path, size_t len, const char *src, const char *rootdir) {
+    if (src[0] == '/') {
+        snprintf(path, len, "%s%s", rootdir, src);
+    } else {
+        snprintf(path, len, "%s", src);
     }
 }
