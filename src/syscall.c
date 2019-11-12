@@ -221,6 +221,19 @@ void mysyscall(machine_t *pm) {
             clearC(pm);
         }
         break;
+    case 12:
+        // chdir
+        word0 = fetch(pm);
+        addroot(path0, sizeof(path0), (const char *)&pm->virtualMemory[word0], pm->rootdir);
+        ret = chdir(path0);
+        if (ret < 0) {
+            pm->r0 = errno & 0xffff;
+            setC(pm); // error bit
+        } else {
+            pm->r0 = ret & 0xffff;
+            clearC(pm);
+        }
+        break;
     case 13:
         // time
         {
@@ -303,6 +316,10 @@ void mysyscall(machine_t *pm) {
         // getpid
         pm->r0 = getpid() & 0xffff;
         break;
+    case 24:
+        // getuid
+        pm->r0 = ((geteuid() & 0xff) << 8) | (getuid() & 0xff);
+        break;
     case 28:
         // fstat
         word0 = fetch(pm);
@@ -317,6 +334,32 @@ void mysyscall(machine_t *pm) {
                 clearC(pm);
                 uint8_t *pi = &pm->virtualMemory[word1];
                 convstat(pi, &s);
+            }
+        }
+        break;
+    case 41:
+        // dup
+        ret = dup((int16_t)pm->r0);
+        if (ret < 0) {
+            pm->r0 = errno & 0xffff;
+            setC(pm); // error bit
+        } else {
+            pm->r0 = ret & 0xffff;
+            clearC(pm);
+        }
+        break;
+    case 42:
+        // pipe
+        {
+            int pipefd[2];
+            ret = pipe(pipefd);
+            if (ret < 0) {
+                pm->r0 = errno & 0xffff;
+                setC(pm); // error bit
+            } else {
+                pm->r0 = pipefd[0] & 0xffff;
+                pm->r1 = pipefd[1] & 0xffff;
+                clearC(pm);
             }
         }
         break;

@@ -67,6 +67,11 @@ void syscall_string(machine_t *pm, char *str, size_t size, uint8_t id) {
         word1 = fetch(pm);
         snprintf(str, size, "exec; 0x%04x; 0x%04x", word0, word1);
         break;
+    case 12:
+        // chdir
+        word0 = fetch(pm);
+        snprintf(str, size, "chdir; 0x%04x", word0);
+        break;
     case 13:
         // time
         snprintf(str, size, "time");
@@ -98,10 +103,22 @@ void syscall_string(machine_t *pm, char *str, size_t size, uint8_t id) {
         // getpid
         snprintf(str, size, "getpid");
         break;
+    case 24:
+        // getuid
+        snprintf(str, size, "getuid");
+        break;
     case 28:
         // fstat
         word0 = fetch(pm);
         snprintf(str, size, "fstat; 0x%04x", word0);
+        break;
+    case 41:
+        // dup
+        snprintf(str, size, "dup");
+        break;
+    case 42:
+        // pipe
+        snprintf(str, size, "pipe");
         break;
     case 48:
         // signal
