@@ -29,7 +29,7 @@ void convstat(uint8_t *pi, const struct stat* ps) {
         int   addr[8];       /* +12: block numbers or device number */
         int   actime[2];     /* +28: time of last access */
         int   modtime[2];    /* +32: time of last modification */
-    } i;
+    };
     /* flags
     100000   i-node is allocated
     060000   2-bit file type:
@@ -51,23 +51,26 @@ void convstat(uint8_t *pi, const struct stat* ps) {
     pi[1] = (ps->st_dev >> 8) & 0xff; // pseudo
     pi[2] = ps->st_ino & 0xff;
     pi[3] = (ps->st_ino >> 8) & 0xff;
-    //pi[4];
-    //pi[5];
+    pi[4] = ps->st_mode & 0xff;
+    pi[5] = (ps->st_mode >> 8) & 0xff;
     pi[6] = ps->st_nlink & 0xff;
     pi[7] = ps->st_uid & 0xff;
     pi[8] = ps->st_gid & 0xff;
     pi[9] = (ps->st_size >> 16) & 0xff;
     pi[10] = ps->st_size & 0xff;
     pi[11] = (ps->st_size >> 8) & 0xff;
+    // addr
     //pi[12];
-    pi[28];
-    pi[29];
-    pi[30];
-    pi[31];
-    pi[32];
-    pi[33];
-    pi[34];
-    pi[35];
+    // actime
+    //pi[28];
+    //pi[29];
+    //pi[30];
+    //pi[31];
+    // modtime
+    //pi[32];
+    //pi[33];
+    //pi[34];
+    //pi[35];
 }
 
 void mysyscall(machine_t *pm) {
@@ -139,7 +142,7 @@ void mysyscall(machine_t *pm) {
         word1 = fetch(pm);
         addroot(path0, sizeof(path0), (const char *)&pm->virtualMemory[word0], pm->rootdir);
         // debug
-        //fprintf(stderr, "/ [DBG] sys open; %04x; %04x\n", word0, word1);
+        //fprintf(stderr, "/ [DBG] sys open; %04x; %06o\n", word0, word1);
         //fprintf(stderr, "/   %s, %s\n", (const char *)&pm->virtualMemory[word0], pm->rootdir);
         //fprintf(stderr, "/   %s\n", path0);
         ret = open(path0, word1);
@@ -182,6 +185,10 @@ void mysyscall(machine_t *pm) {
         word0 = fetch(pm);
         word1 = fetch(pm);
         addroot(path0, sizeof(path0), (const char *)&pm->virtualMemory[word0], pm->rootdir);
+        // debug
+        //fprintf(stderr, "/ [DBG] sys creat; %04x; %06o\n", word0, word1);
+        //fprintf(stderr, "/   %s, %s\n", (const char *)&pm->virtualMemory[word0], pm->rootdir);
+        //fprintf(stderr, "/   %s\n", path0);
         ret = creat(path0, word1);
         if (ret < 0) {
             pm->r0 = errno & 0xffff;
@@ -338,6 +345,9 @@ void mysyscall(machine_t *pm) {
                 clearC(pm);
                 uint8_t *pi = &pm->virtualMemory[word1];
                 convstat(pi, &s);
+                // debug
+                //fprintf(stderr, "/ [DBG] stat src: %06o\n", s.st_mode);
+                //fprintf(stderr, "/ [DBG] stat dst: %06o\n", *(uint16_t *)(pi + 4));
             }
         }
         break;
@@ -392,8 +402,11 @@ void mysyscall(machine_t *pm) {
             } else {
                 pm->r0 = ret & 0xffff;
                 clearC(pm);
-                uint8_t *pi = &pm->virtualMemory[word1];
+                uint8_t *pi = &pm->virtualMemory[word0];
                 convstat(pi, &s);
+                // debug
+                //fprintf(stderr, "/ [DBG] fstat src: %06o\n", s.st_mode);
+                //fprintf(stderr, "/ [DBG] fstat dst: %06o\n", *(uint16_t *)(pi + 4));
             }
         }
         break;
