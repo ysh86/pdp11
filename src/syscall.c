@@ -368,6 +368,14 @@ void mysyscall(machine_t *pm) {
         // getpid
         pm->r0 = getpid() & 0xffff;
         break;
+    case 23:
+        // setuid
+        fprintf(stderr, "/ [WRN] ignore setuid: sys %d, %04x: %04x\n", pm->syscallID, pm->addr, pm->bin);
+        {
+            pm->r0 = 0;
+            clearC(pm);
+        }
+        break;
     case 24:
         // getuid
         pm->r0 = ((geteuid() & 0xff) << 8) | (getuid() & 0xff);
@@ -446,6 +454,18 @@ void mysyscall(machine_t *pm) {
             dbuf[4] = (sbuf.tms_cstime >> 16) & 0xffff;
             dbuf[5] = sbuf.tms_cstime & 0xffff;
         }
+        break;
+    case 46:
+        // setgid
+        fprintf(stderr, "/ [WRN] ignore setgid: sys %d, %04x: %04x\n", pm->syscallID, pm->addr, pm->bin);
+        {
+            pm->r0 = 0;
+            clearC(pm);
+        }
+        break;
+    case 47:
+        // getgid
+        pm->r0 = ((getegid() & 0xff) << 8) | (getgid() & 0xff);
         break;
     case 48:
         // signal

@@ -111,6 +111,10 @@ void syscall_string(machine_t *pm, char *str, size_t size, uint8_t id) {
         // getpid
         snprintf(str, size, "getpid");
         break;
+    case 23:
+        // setuid
+        snprintf(str, size, "setuid");
+        break;
     case 24:
         // getuid
         snprintf(str, size, "getuid");
@@ -132,6 +136,14 @@ void syscall_string(machine_t *pm, char *str, size_t size, uint8_t id) {
         // times
         word0 = fetch(pm);
         snprintf(str, size, "times; 0x%04x", word0);
+        break;
+    case 46:
+        // setgid
+        snprintf(str, size, "setgid");
+        break;
+    case 47:
+        // getgid
+        snprintf(str, size, "getgid");
         break;
     case 48:
         // signal
