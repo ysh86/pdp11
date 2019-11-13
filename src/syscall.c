@@ -138,6 +138,10 @@ void mysyscall(machine_t *pm) {
         word0 = fetch(pm);
         word1 = fetch(pm);
         addroot(path0, sizeof(path0), (const char *)&pm->virtualMemory[word0], pm->rootdir);
+        // debug
+        //fprintf(stderr, "/ [DBG] sys open; %04x; %04x\n", word0, word1);
+        //fprintf(stderr, "/   %s, %s\n", (const char *)&pm->virtualMemory[word0], pm->rootdir);
+        //fprintf(stderr, "/   %s\n", path0);
         ret = open(path0, word1);
         if (ret < 0) {
             pm->r0 = errno & 0xffff;
@@ -219,15 +223,22 @@ void mysyscall(machine_t *pm) {
         // exec
         word0 = fetch(pm);
         word1 = fetch(pm);
+        // debug
+        //fprintf(stderr, "/ [DBG] sys exec; %04x; %04x\n", word0, word1);
+        //fprintf(stderr, "/ [DBG]   %s\n", (const char *)&pm->virtualMemory[word0]);
+
         // calc size of args & copy args
+        clearC(pm); // clear error bit
         uint16_t na = 0;
+        uint16_t nc = 0;
         {
-            uint16_t nc = 0;
             uint8_t *argv = &pm->virtualMemory[word1];
             uint16_t addr = read16(false, argv);
             argv += 2;
             while (addr != 0) {
                 const char *pa = (const char *)&pm->virtualMemory[addr];
+                // debug
+                //fprintf(stderr, "/ [DBG]   argv[%d]: %s\n", na, pa);
                 addr = read16(false, argv);
                 argv += 2;
                 na++;
@@ -250,11 +261,16 @@ void mysyscall(machine_t *pm) {
             pm->r0 = 0xffff;
         } else {
             pm->argc = na;
-            pm->name = (const char *)&pm->virtualMemory[word0];
+            pm->argsbytes = nc;
 
-            pm->r0 = 0;
-            pm->pc = 0xffff; // goto the end of the memory, then load the new text
-            clearC(pm);
+            if (!load(pm, (const char *)&pm->virtualMemory[word0])) {
+                pm->r0 = 0xffff;
+                setC(pm); // error bit
+            } else {
+                pm->r0 = 0;
+                pm->pc = 0xffff; // goto the end of the memory, then run the new text
+                clearC(pm);
+            }
         }
         break;
     case 12:

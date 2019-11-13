@@ -23,7 +23,7 @@ struct machine_tag {
     char curdir[PATH_MAX];
     int argc;
     uint8_t args[512];
-    const char *name;
+    uint16_t argsbytes;
     uint16_t aoutHeader[8];
 
     // memory
@@ -136,4 +136,5 @@ static inline bool isC(const machine_t *pm) {
     return (pm->psw & PSW_C);
 }
 
+bool load(machine_t *pm, const char *src);
 uint16_t fetch(machine_t *pm);

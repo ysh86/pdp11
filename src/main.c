@@ -341,46 +341,16 @@ int main(int argc, char *argv[]) {
     if (nc & 1) {
         machine.args[nc++] = '\0';
     }
-    machine.name = (const char *)machine.args;
-
-    //////////////////////////
-    // load
-    //////////////////////////
-    FILE *fp;
-    char name[PATH_MAX];
-    reload:
-    addroot(name, sizeof(name), machine.name, machine.rootdir);
-    printf("\n/ %s (orig: %s)\n", name, machine.name);
-    fp = fopen(name, "rb");
-    if (fp == NULL) {
-        fprintf(stderr, "/ [ERR] Invalid input file\n");
+    machine.argsbytes = nc;
+    if (!load(&machine, (const char *)machine.args)) {
+        fprintf(stderr, "/ [ERR] Can't load file\n");
         return EXIT_FAILURE;
     }
-
-    size_t n;
-    size_t size;
-    size = sizeof(machine.aoutHeader);
-    n = fread(machine.aoutHeader, 1, size, fp);
-    if (n != size) {
-        fprintf(stderr, "/ [ERR] Can't read file\n");
-        fclose(fp);
-        return EXIT_FAILURE;
-    }
-    // TODO: endian
-
-    size = sizeof(machine.virtualMemory);
-    n = fread(machine.virtualMemory, 1, size, fp);
-    if (n <= 0) {
-        fprintf(stderr, "/ [ERR] Can't read file\n");
-        fclose(fp);
-        return EXIT_FAILURE;
-    }
-    fclose(fp);
-    fp = NULL;
 
     //////////////////////////
     // prepare
     //////////////////////////
+    reloaded:
     machine.textStart = 0;
     machine.textEnd = machine.textStart + machine.aoutHeader[1];
     machine.dataStart = machine.textEnd;
@@ -409,7 +379,7 @@ int main(int argc, char *argv[]) {
     printf("/ entry:     0x%04x\n", machine.aoutHeader[5]);
     printf("/ unused:    0x%04x\n", machine.aoutHeader[6]);
     printf("/ flag:      0x%04x\n", machine.aoutHeader[7]);
-    printf("\n");
+    printf("/\n");
 
     // bss
     memset(&machine.virtualMemory[machine.bssStart], 0, machine.aoutHeader[3]);
@@ -427,7 +397,7 @@ int main(int argc, char *argv[]) {
 
     // push args
     const uint16_t na = machine.argc;
-    machine.sp -= 2 + na * 2 + 2 + nc; // argc, argv[0]...argv[na-1], -1, buf
+    machine.sp -= 2 + na * 2 + 2 + machine.argsbytes; // argc, argv[0]...argv[na-1], -1, buf
     uint8_t *sp = &machine.virtualMemory[machine.sp];
     char *pbuf = (char *)(sp + 2 + na * 2 + 2);
     // argc
@@ -439,6 +409,7 @@ int main(int argc, char *argv[]) {
         uint16_t addr = (uintptr_t)pbuf - (uintptr_t)machine.virtualMemory;
         write16(false, sp, addr);
         sp += 2;
+        printf("/ argv[%d]: %s\n", i, pa);
         do {
             *pbuf++ = *pa;
         } while (*pa++ != '\0');
@@ -448,6 +419,7 @@ int main(int argc, char *argv[]) {
         *pbuf = '\0'; // alignment
     }
     write16(false, sp, 0xffff); // -1
+    printf("\n");
 
 #if 0
     // debug dump
@@ -585,8 +557,9 @@ int main(int argc, char *argv[]) {
         exec(&machine);
         //disasm(&machine);
     }
-    goto reload;
+    goto reloaded;
 
     // never reach
+    assert(0);
     return EXIT_FAILURE;
 }

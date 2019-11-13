@@ -1549,7 +1549,6 @@ void sys(machine_t *pm) {
     if (pm->syscallID == 0) {
         // indir
         uint16_t addr = fetch(pm);
-        //fprintf(stderr, "0; 0x%04x ", addr);
 
         uint16_t oldpc = pm->pc;
         {
@@ -1559,7 +1558,17 @@ void sys(machine_t *pm) {
             assert(pm->bin - pm->syscallID == 0104400);
             mysyscall(pm);
         }
-        pm->pc = oldpc;
+        // syscall exec(11) overwrites pc!
+        if (pm->syscallID == 11) {
+            if (pm->pc != 0xffff) {
+                pm->pc = oldpc;
+                assert(isC(pm));
+            }
+        } else {
+            pm->pc = oldpc;
+        }
+        // TODO: In syscall fork(2) parent overwrites pc!
+        assert(pm->syscallID != 2);
     } else {
         mysyscall(pm);
     }
