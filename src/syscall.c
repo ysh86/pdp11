@@ -8,6 +8,8 @@
 #include <sys/errno.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
+#include <sys/times.h>
 
 #include "syscall.h"
 #include "machine.h"
@@ -86,6 +88,25 @@ void mysyscall(machine_t *pm) {
         // exit
         _exit((int16_t)pm->r0);
         break;
+    case 2:
+        // fork
+        ret = fork();
+        if (ret < 0) {
+            pm->r0 = errno & 0xffff;
+            setC(pm); // error bit
+        } else {
+            if (ret == 0) {
+                // child
+                // nothing to do
+            } else {
+                // parent
+                pm->pc += 2;
+            }
+            //fprintf(stderr, "/ [DBG] fork pid: %d (pc: %04x)\n", ret, pm->pc);
+            pm->r0 = ret & 0xffff;
+            clearC(pm);
+        }
+        break;
     case 3:
         // read
         word0 = fetch(pm);
@@ -135,6 +156,21 @@ void mysyscall(machine_t *pm) {
         } else {
             pm->r0 = ret & 0xffff;
             clearC(pm);
+        }
+        break;
+    case 7:
+        // wait
+        {
+            int status;
+            ret = wait(&status);
+            if (ret < 0) {
+                pm->r0 = errno & 0xffff;
+                setC(pm); // error bit
+            } else {
+                pm->r0 = ret & 0xffff;
+                pm->r1 = status & 0xffff;
+                clearC(pm);
+            }
         }
         break;
     case 8:
@@ -361,6 +397,38 @@ void mysyscall(machine_t *pm) {
                 pm->r1 = pipefd[1] & 0xffff;
                 clearC(pm);
             }
+        }
+        break;
+    case 43:
+        // times
+        word0 = fetch(pm);
+        /* in 1/60 seconds
+        struct tbuffer {
+            int16_t proc_user_time;
+            int16_t proc_system_time;
+            int16_t child_user_time[2];
+            int16_t child_system_time[2];
+        };
+        */
+        {
+            long ticks_per_sec = sysconf(_SC_CLK_TCK);
+            struct tms sbuf;
+            clock_t clk = times(&sbuf);
+            assert(clk >= 0);
+
+            // to 1/60 sec
+            sbuf.tms_utime = sbuf.tms_utime * 60 / ticks_per_sec;
+            sbuf.tms_stime = sbuf.tms_stime * 60 / ticks_per_sec;
+            sbuf.tms_cutime = sbuf.tms_cutime * 60 / ticks_per_sec;
+            sbuf.tms_cstime = sbuf.tms_cstime * 60 / ticks_per_sec;
+
+            uint16_t *dbuf = (uint16_t *)&pm->virtualMemory[word0];
+            dbuf[0] = sbuf.tms_utime & 0xffff;
+            dbuf[1] = sbuf.tms_stime & 0xffff;
+            dbuf[2] = (sbuf.tms_cutime >> 16) & 0xffff;
+            dbuf[3] = sbuf.tms_cutime & 0xffff;
+            dbuf[4] = (sbuf.tms_cstime >> 16) & 0xffff;
+            dbuf[5] = sbuf.tms_cstime & 0xffff;
         }
         break;
     case 48:

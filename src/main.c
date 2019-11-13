@@ -22,6 +22,10 @@ void syscall_string(machine_t *pm, char *str, size_t size, uint8_t id) {
         // exit
         snprintf(str, size, "exit");
         break;
+    case 2:
+        // fork
+        snprintf(str, size, "fork");
+        break;
     case 3:
         // read
         word0 = fetch(pm);
@@ -43,6 +47,10 @@ void syscall_string(machine_t *pm, char *str, size_t size, uint8_t id) {
     case 6:
         // close
         snprintf(str, size, "close");
+        break;
+    case 7:
+        // wait
+        snprintf(str, size, "wait");
         break;
     case 8:
         // creat
@@ -119,6 +127,11 @@ void syscall_string(machine_t *pm, char *str, size_t size, uint8_t id) {
     case 42:
         // pipe
         snprintf(str, size, "pipe");
+        break;
+    case 43:
+        // times
+        word0 = fetch(pm);
+        snprintf(str, size, "times; 0x%04x", word0);
         break;
     case 48:
         // signal
