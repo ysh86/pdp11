@@ -259,7 +259,7 @@ static uint8_t *operand(machine_t *pm, uint8_t mode, uint8_t reg) {
         break;
     case 2:
         ret = &pm->virtualMemory[*rn];
-        if (!pm->isByte || reg == 7) {
+        if (!pm->isByte || reg == 6 /*sp*/ || reg == 7 /*pc*/) {
             (*rn) += 2;
         } else {
             (*rn) += 1;
@@ -272,7 +272,7 @@ static uint8_t *operand(machine_t *pm, uint8_t mode, uint8_t reg) {
         return &pm->virtualMemory[addr];
         break;
     case 4:
-        if (!pm->isByte) {
+        if (!pm->isByte || reg == 6 /*sp*/ || reg == 7 /*pc*/) {
             (*rn) -= 2;
         } else {
             (*rn) -= 1;
