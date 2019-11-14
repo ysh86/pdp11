@@ -1,10 +1,12 @@
 #include <stdio.h>
 #include <stdint.h>
+#include <string.h>
 #include <assert.h>
 
 #include <unistd.h>
 #include <fcntl.h>
 #include <time.h>
+#include <dirent.h>
 #include <sys/errno.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -114,7 +116,33 @@ void mysyscall(machine_t *pm) {
         // read
         word0 = fetch(pm);
         word1 = fetch(pm);
-        sret = read((int16_t)pm->r0, &pm->virtualMemory[word0], word1);
+        if (pm->dirfd != -1 && pm->dirp != NULL && (int16_t)pm->r0 == pm->dirfd) {
+            // dir
+            struct dirent *ent;
+            ent = readdir(pm->dirp);
+            if (ent == NULL) {
+                if (errno == 0) {
+                    // EOF
+                    sret = 0;
+                } else {
+                    // error
+                    sret = -1;
+                }
+            } else {
+                assert(word1 == 16);
+                uint8_t *p = &pm->virtualMemory[word0];
+                // ino
+                p[0] = ent->d_ino & 0xff;
+                p[1] = (ent->d_ino >> 8) & 0xff;
+                // name
+                strncpy((char *)&p[2], ent->d_name, 16 - 2 - 1);
+                p[15] = '\0';
+                sret = word1;
+            }
+        } else {
+            // file
+            sret = read((int16_t)pm->r0, &pm->virtualMemory[word0], word1);
+        }
         if (sret < 0) {
             pm->r0 = errno & 0xffff;
             setC(pm); // error bit
@@ -152,11 +180,39 @@ void mysyscall(machine_t *pm) {
         } else {
             pm->r0 = ret & 0xffff;
             clearC(pm);
+
+            // check file or dir
+            int fd = ret;
+            struct stat s;
+            ret = fstat(fd, &s);
+            if (ret == 0 && S_ISDIR(s.st_mode)) {
+                // dir
+                DIR *dirp = fdopendir(fd);
+                if (dirp == NULL) {
+                    pm->r0 = errno & 0xffff;
+                    setC(pm); // error bit
+                    close(fd);
+                } else {
+                    // TODO: support only one dir per process, currently
+                    assert(pm->dirfd == -1);
+                    assert(pm->dirp == NULL);
+                    pm->dirfd = fd;
+                    pm->dirp = dirp;
+                }
+            }
         }
         break;
     case 6:
         // close
-        ret = close((int16_t)pm->r0);
+        if (pm->dirfd != -1 && pm->dirp != NULL && (int16_t)pm->r0 == pm->dirfd) {
+            // dir
+            ret = closedir(pm->dirp);
+            pm->dirfd = -1;
+            pm->dirp = NULL;
+        } else {
+            // file
+            ret = close((int16_t)pm->r0);
+        }
         if (ret < 0) {
             pm->r0 = errno & 0xffff;
             setC(pm); // error bit

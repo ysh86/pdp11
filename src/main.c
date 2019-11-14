@@ -324,6 +324,8 @@ int main(int argc, char *argv[]) {
 
     machine_t machine;
     setRegPtr(&machine);
+    machine.dirfd = -1;
+    machine.dirp = NULL;
 
     //////////////////////////
     // env

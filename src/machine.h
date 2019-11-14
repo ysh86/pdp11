@@ -2,6 +2,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <dirent.h>
 
 // for PATH_MAX
 #ifdef __linux__
@@ -25,6 +26,10 @@ struct machine_tag {
     uint8_t args[512];
     uint16_t argsbytes;
     uint16_t aoutHeader[8];
+
+    // emulate opendir, closedir and readdir
+    int dirfd;
+    DIR *dirp;
 
     // memory
     uint8_t virtualMemory[64 * 1024];
