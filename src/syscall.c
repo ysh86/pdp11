@@ -135,8 +135,13 @@ void mysyscall(machine_t *pm) {
                 p[0] = ent->d_ino & 0xff;
                 p[1] = (ent->d_ino >> 8) & 0xff;
                 // name
+                // TODO: Which is better?
+#if 1
+                strncpy((char *)&p[2], ent->d_name, 16 - 2);
+#else
                 strncpy((char *)&p[2], ent->d_name, 16 - 2 - 1);
                 p[15] = '\0';
+#endif
                 sret = word1;
             }
         } else {
