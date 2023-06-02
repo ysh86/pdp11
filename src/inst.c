@@ -1,10 +1,66 @@
+#include <stdlib.h> // for abs()
 #include <stdio.h>
 #include <assert.h>
 
 #include "inst.h"
-#include "machine.h"
+#include "cpu.h"
 #include "util.h"
-#include "syscall.h"
+
+static void nop(cpu_t *pcpu);
+
+static void mov(cpu_t *pcpu);
+static void cmp(cpu_t *pcpu);
+static void bit(cpu_t *pcpu);
+static void bic(cpu_t *pcpu);
+static void bis(cpu_t *pcpu);
+static void add(cpu_t *pcpu);
+static void sub(cpu_t *pcpu);
+static void mul(cpu_t *pcpu);
+static void mydiv(cpu_t *pcpu);
+static void ash(cpu_t *pcpu);
+static void ashc(cpu_t *pcpu);
+static void xor(cpu_t *pcpu);
+static void sob(cpu_t *pcpu);
+
+static void br(cpu_t *pcpu);
+static void bne(cpu_t *pcpu);
+static void beq(cpu_t *pcpu);
+static void bge(cpu_t *pcpu);
+static void blt(cpu_t *pcpu);
+static void bgt(cpu_t *pcpu);
+static void ble(cpu_t *pcpu);
+static void bpl(cpu_t *pcpu);
+static void bmi(cpu_t *pcpu);
+static void bhi(cpu_t *pcpu);
+static void blos(cpu_t *pcpu);
+static void bvc(cpu_t *pcpu);
+static void bvs(cpu_t *pcpu);
+static void bcc(cpu_t *pcpu);
+static void bcs(cpu_t *pcpu);
+
+static void clr(cpu_t *pcpu);
+static void com(cpu_t *pcpu);
+static void inc(cpu_t *pcpu);
+static void dec(cpu_t *pcpu);
+static void neg(cpu_t *pcpu);
+static void adc(cpu_t *pcpu);
+static void sbc(cpu_t *pcpu);
+static void tst(cpu_t *pcpu);
+
+static void ror(cpu_t *pcpu);
+static void rol(cpu_t *pcpu);
+static void asr(cpu_t *pcpu);
+static void asl(cpu_t *pcpu);
+static void sxt(cpu_t *pcpu);
+static void myswab(cpu_t *pcpu);
+
+static void jmp(cpu_t *pcpu);
+static void jsr(cpu_t *pcpu);
+static void rts(cpu_t *pcpu);
+
+static void sys(cpu_t *pcpu);
+
+static void myclearset(cpu_t *pcpu);
 
 instruction_t doubleOperand0[] = {
     {"",    0, NULL},     // 0 000b: singleOperand0[], conditionalBranch0[]
@@ -244,22 +300,22 @@ static inline bool msb8(int8_t v) {
     return (v & 0x80);
 }
 
-static uint8_t *operand(machine_t *pm, uint8_t mode, uint8_t reg) {
+static uint8_t *operand(cpu_t *pcpu, uint8_t mode, uint8_t reg) {
     uint8_t *ret;
 
     uint16_t addr;
     int16_t word;
-    uint16_t *rn = pm->r[reg];
+    uint16_t *rn = pcpu->r[reg];
     switch (mode) {
     case 0:
         return (uint8_t *)rn;
         break;
     case 1:
-        return &pm->virtualMemory[*rn];
+        return pcpu->mmuV2R(pcpu->ctx, *rn);
         break;
     case 2:
-        ret = &pm->virtualMemory[*rn];
-        if (!pm->isByte || reg == 6 /*sp*/ || reg == 7 /*pc*/) {
+        ret = pcpu->mmuV2R(pcpu->ctx, *rn);
+        if (!pcpu->isByte || reg == 6 /*sp*/ || reg == 7 /*pc*/) {
             (*rn) += 2;
         } else {
             (*rn) += 1;
@@ -267,31 +323,31 @@ static uint8_t *operand(machine_t *pm, uint8_t mode, uint8_t reg) {
         return ret;
         break;
     case 3:
-        addr = read16(false, &pm->virtualMemory[*rn]);
+        addr = read16(false, pcpu->mmuV2R(pcpu->ctx, *rn));
         (*rn) += 2;
-        return &pm->virtualMemory[addr];
+        return pcpu->mmuV2R(pcpu->ctx, addr);
         break;
     case 4:
-        if (!pm->isByte || reg == 6 /*sp*/ || reg == 7 /*pc*/) {
+        if (!pcpu->isByte || reg == 6 /*sp*/ || reg == 7 /*pc*/) {
             (*rn) -= 2;
         } else {
             (*rn) -= 1;
         }
-        return &pm->virtualMemory[*rn];
+        return pcpu->mmuV2R(pcpu->ctx, *rn);
         break;
     case 5:
         (*rn) -= 2;
-        addr = read16(false, &pm->virtualMemory[*rn]);
-        return &pm->virtualMemory[addr];
+        addr = read16(false, pcpu->mmuV2R(pcpu->ctx, *rn));
+        return pcpu->mmuV2R(pcpu->ctx, addr);
         break;
     case 6:
-        word = fetch(pm);
-        return &pm->virtualMemory[((int16_t)(*rn) + word) & 0xffff];
+        word = fetch(pcpu);
+        return pcpu->mmuV2R(pcpu->ctx, ((int16_t)(*rn) + word) & 0xffff);
         break;
     case 7:
-        word = fetch(pm);
-        addr = read16(false, &pm->virtualMemory[((int16_t)(*rn) + word) & 0xffff]);
-        return &pm->virtualMemory[addr];
+        word = fetch(pcpu);
+        addr = read16(false, pcpu->mmuV2R(pcpu->ctx, ((int16_t)(*rn) + word) & 0xffff));
+        return pcpu->mmuV2R(pcpu->ctx, addr);
         break;
     default:
         assert(0);
@@ -300,435 +356,435 @@ static uint8_t *operand(machine_t *pm, uint8_t mode, uint8_t reg) {
 }
 
 
-void exec(machine_t *pm) {
+void exec(cpu_t *pcpu) {
     // debug
-    //uint16_t addr0 = pm->sp;
-    //uint16_t sp0 = read16(false, &pm->virtualMemory[pm->sp]);
-    //fprintf(stderr, "%04x: %s ", pm->addr, pm->inst->mnemonic);
+    //uint16_t addr0 = pcpu->sp;
+    //uint16_t sp0 = read16(false, pcpu->mmuV2R(pcpu->ctx, pcpu->sp));
+    //fprintf(stderr, "%04x: %s ", pcpu->addr, pcpu->inst->mnemonic);
 
-    if (pm->inst->operandNum == 4) {
+    if (pcpu->inst->operandNum == 4) {
         // doubleOperand0
-        pm->operand0 = operand(pm, pm->mode0, pm->reg0);
-        pm->operand1 = operand(pm, pm->mode1, pm->reg1);
-    } else if (pm->inst->operandNum == 3 || pm->inst->operandNum == 8) {
+        pcpu->operand0 = operand(pcpu, pcpu->mode0, pcpu->reg0);
+        pcpu->operand1 = operand(pcpu, pcpu->mode1, pcpu->reg1);
+    } else if (pcpu->inst->operandNum == 3 || pcpu->inst->operandNum == 8) {
         // doubleOperand1, mul,div,ash,ashc, jsr
-        pm->operand0 = operand(pm, 0, pm->reg0);
-        pm->operand1 = operand(pm, pm->mode1, pm->reg1);
-    } else if (pm->inst->operandNum == 7) {
+        pcpu->operand0 = operand(pcpu, 0, pcpu->reg0);
+        pcpu->operand1 = operand(pcpu, pcpu->mode1, pcpu->reg1);
+    } else if (pcpu->inst->operandNum == 7) {
         // doubleOperand1 sob only
-        pm->operand0 = operand(pm, 0, pm->reg0);
-        //pm->operand1 = &pm->offset;
-    } else if (pm->inst->operandNum == 2) {
+        pcpu->operand0 = operand(pcpu, 0, pcpu->reg0);
+        //pcpu->operand1 = &pcpu->offset;
+    } else if (pcpu->inst->operandNum == 2) {
         // singleOperand0, singleOperand1, jmp, swab
-        pm->operand1 = operand(pm, pm->mode1, pm->reg1);
-    } else if (pm->inst->operandNum == 1) {
+        pcpu->operand1 = operand(pcpu, pcpu->mode1, pcpu->reg1);
+    } else if (pcpu->inst->operandNum == 1) {
         // subroutine
-        pm->operand1 = operand(pm, 0, pm->reg1);
-    } else if (pm->inst->operandNum == 5) {
+        pcpu->operand1 = operand(pcpu, 0, pcpu->reg1);
+    } else if (pcpu->inst->operandNum == 5) {
         // conditionalBranch0, conditionalBranch1
-        //pm->operand0 = &pm->offset;
-    } else if (pm->inst->operandNum == 6) {
+        //pcpu->operand0 = &pcpu->offset;
+    } else if (pcpu->inst->operandNum == 6) {
         // syscall
-    } else if (pm->inst->operandNum == 0) {
+    } else if (pcpu->inst->operandNum == 0) {
         // floatingPoint1, systemMisc
     } else {
         // TODO: unknown op
         assert(0);
     }
 
-    if (pm->inst->exec == NULL) {
-        fprintf(stderr, "/ [ERR] Not implemented: %s, %04x: %04x\n", pm->inst->mnemonic, pm->addr, pm->bin);
-        assert(pm->inst->exec);
+    if (pcpu->inst->exec == NULL) {
+        fprintf(stderr, "/ [ERR] Not implemented: %s, %04x: %04x\n", pcpu->inst->mnemonic, pcpu->addr, pcpu->bin);
+        assert(pcpu->inst->exec);
     }
 
-    pm->inst->exec(pm);
+    pcpu->inst->exec(pcpu);
 
     // debug
-    //uint16_t addr1 = pm->sp;
-    //uint16_t sp1 = read16(false, &pm->virtualMemory[pm->sp]);
-    //fprintf(stderr, "(sp: %04x:%04x -> %04x:%04x, pc: %04x)\n", addr0, sp0, addr1, sp1, pm->pc);
+    //uint16_t addr1 = pcpu->sp;
+    //uint16_t sp1 = read16(false, pcpu->mmuV2R(pcpu->ctx, pcpu->sp));
+    //fprintf(stderr, "(sp: %04x:%04x -> %04x:%04x, pc: %04x)\n", addr0, sp0, addr1, sp1, pcpu->pc);
 }
 
-void nop(machine_t *pm) {
+static void nop(cpu_t *pcpu) {
     // nothing to do
 }
 
-void mov(machine_t *pm) {
+static void mov(cpu_t *pcpu) {
     int signedSrc;
-    if (!pm->isByte) {
-        uint16_t src = read16((pm->mode0 == 0), pm->operand0);
-        write16((pm->mode1 == 0), pm->operand1, src);
+    if (!pcpu->isByte) {
+        uint16_t src = read16((pcpu->mode0 == 0), pcpu->operand0);
+        write16((pcpu->mode1 == 0), pcpu->operand1, src);
         signedSrc = (int16_t)src;
     } else {
-        uint8_t src = read8((pm->mode0 == 0), pm->operand0);
-        write8((pm->mode1 == 0), pm->operand1, src);
+        uint8_t src = read8((pcpu->mode0 == 0), pcpu->operand0);
+        write8((pcpu->mode1 == 0), pcpu->operand1, src);
         signedSrc = (int8_t)src;
     }
 
     if (signedSrc < 0) {
-        setN(pm);
+        setN(pcpu);
     } else {
-        clearN(pm);
+        clearN(pcpu);
     }
     if (signedSrc == 0) {
-        setZ(pm);
+        setZ(pcpu);
     } else {
-        clearZ(pm);
+        clearZ(pcpu);
     }
-    clearV(pm);
+    clearV(pcpu);
 }
 
-void cmp(machine_t *pm) {
-    if (!pm->isByte) {
-        int16_t src16 = read16((pm->mode0 == 0), pm->operand0);
-        int16_t dst16 = read16((pm->mode1 == 0), pm->operand1);
+static void cmp(cpu_t *pcpu) {
+    if (!pcpu->isByte) {
+        int16_t src16 = read16((pcpu->mode0 == 0), pcpu->operand0);
+        int16_t dst16 = read16((pcpu->mode1 == 0), pcpu->operand1);
         int16_t result16 = src16 - dst16;
 
         if (result16 < 0) {
-            setN(pm);
+            setN(pcpu);
         } else {
-            clearN(pm);
+            clearN(pcpu);
         }
         if (result16 == 0) {
-            setZ(pm);
+            setZ(pcpu);
         } else {
-            clearZ(pm);
+            clearZ(pcpu);
         }
         if (msb16(src16) != msb16(dst16) && msb16(dst16) == msb16(result16)) {
-            setV(pm);
+            setV(pcpu);
         } else {
-            clearV(pm);
+            clearV(pcpu);
         }
         uint32_t c = (uint16_t)src16 + ~(uint16_t)dst16 + 1;
         if (c & 0x10000) {
-            setC(pm);
+            setC(pcpu);
         } else {
-            clearC(pm);
+            clearC(pcpu);
         }
     } else {
-        int8_t src8 = read8((pm->mode0 == 0), pm->operand0);
-        int8_t dst8 = read8((pm->mode1 == 0), pm->operand1);
+        int8_t src8 = read8((pcpu->mode0 == 0), pcpu->operand0);
+        int8_t dst8 = read8((pcpu->mode1 == 0), pcpu->operand1);
         int8_t result8 = src8 - dst8;
 
         if (result8 < 0) {
-            setN(pm);
+            setN(pcpu);
         } else {
-            clearN(pm);
+            clearN(pcpu);
         }
         if (result8 == 0) {
-            setZ(pm);
+            setZ(pcpu);
         } else {
-            clearZ(pm);
+            clearZ(pcpu);
         }
         if (msb8(src8) != msb8(dst8) && msb8(dst8) == msb8(result8)) {
-            setV(pm);
+            setV(pcpu);
         } else {
-            clearV(pm);
+            clearV(pcpu);
         }
         uint16_t c = (uint8_t)src8 + ~(uint8_t)dst8 + 1;
         if (c & 0x100) {
-            setC(pm);
+            setC(pcpu);
         } else {
-            clearC(pm);
+            clearC(pcpu);
         }
     }
 }
 
-void bit(machine_t *pm) {
-    if (!pm->isByte) {
-        uint16_t src16 = read16((pm->mode0 == 0), pm->operand0);
-        uint16_t dst16 = read16((pm->mode1 == 0), pm->operand1);
+static void bit(cpu_t *pcpu) {
+    if (!pcpu->isByte) {
+        uint16_t src16 = read16((pcpu->mode0 == 0), pcpu->operand0);
+        uint16_t dst16 = read16((pcpu->mode1 == 0), pcpu->operand1);
         uint16_t result16 = src16 & dst16;
 
         if (msb16(result16)) {
-            setN(pm);
+            setN(pcpu);
         } else {
-            clearN(pm);
+            clearN(pcpu);
         }
         if (result16 == 0) {
-            setZ(pm);
+            setZ(pcpu);
         } else {
-            clearZ(pm);
+            clearZ(pcpu);
         }
     } else {
-        uint8_t src8 = read8((pm->mode0 == 0), pm->operand0);
-        uint8_t dst8 = read8((pm->mode1 == 0), pm->operand1);
+        uint8_t src8 = read8((pcpu->mode0 == 0), pcpu->operand0);
+        uint8_t dst8 = read8((pcpu->mode1 == 0), pcpu->operand1);
         uint8_t result8 = src8 & dst8;
 
         if (msb8(result8)) {
-            setN(pm);
+            setN(pcpu);
         } else {
-            clearN(pm);
+            clearN(pcpu);
         }
         if (result8 == 0) {
-            setZ(pm);
+            setZ(pcpu);
         } else {
-            clearZ(pm);
+            clearZ(pcpu);
         }
     }
 
-    clearV(pm);
+    clearV(pcpu);
 }
 
-void bic(machine_t *pm) {
-    if (!pm->isByte) {
-        uint16_t src16 = read16((pm->mode0 == 0), pm->operand0);
-        uint16_t dst16 = read16((pm->mode1 == 0), pm->operand1);
+static void bic(cpu_t *pcpu) {
+    if (!pcpu->isByte) {
+        uint16_t src16 = read16((pcpu->mode0 == 0), pcpu->operand0);
+        uint16_t dst16 = read16((pcpu->mode1 == 0), pcpu->operand1);
         dst16 &= ~src16;
-        write16((pm->mode1 == 0), pm->operand1, dst16);
+        write16((pcpu->mode1 == 0), pcpu->operand1, dst16);
 
         if (msb16(dst16)) {
-            setN(pm);
+            setN(pcpu);
         } else {
-            clearN(pm);
+            clearN(pcpu);
         }
         if (dst16 == 0) {
-            setZ(pm);
+            setZ(pcpu);
         } else {
-            clearZ(pm);
+            clearZ(pcpu);
         }
     } else {
-        uint8_t src8 = read8((pm->mode0 == 0), pm->operand0);
-        uint8_t dst8 = read8((pm->mode1 == 0), pm->operand1);
+        uint8_t src8 = read8((pcpu->mode0 == 0), pcpu->operand0);
+        uint8_t dst8 = read8((pcpu->mode1 == 0), pcpu->operand1);
         dst8 &= ~src8;
-        write8((pm->mode1 == 0), pm->operand1, dst8);
+        write8((pcpu->mode1 == 0), pcpu->operand1, dst8);
 
         if (msb16(dst8)) {
-            setN(pm);
+            setN(pcpu);
         } else {
-            clearN(pm);
+            clearN(pcpu);
         }
         if (dst8 == 0) {
-            setZ(pm);
+            setZ(pcpu);
         } else {
-            clearZ(pm);
+            clearZ(pcpu);
         }
     }
 
-    clearV(pm);
+    clearV(pcpu);
 }
 
-void bis(machine_t *pm) {
-    if (!pm->isByte) {
-        uint16_t src16 = read16((pm->mode0 == 0), pm->operand0);
-        uint16_t dst16 = read16((pm->mode1 == 0), pm->operand1);
+static void bis(cpu_t *pcpu) {
+    if (!pcpu->isByte) {
+        uint16_t src16 = read16((pcpu->mode0 == 0), pcpu->operand0);
+        uint16_t dst16 = read16((pcpu->mode1 == 0), pcpu->operand1);
         dst16 |= src16;
-        write16((pm->mode1 == 0), pm->operand1, dst16);
+        write16((pcpu->mode1 == 0), pcpu->operand1, dst16);
 
         if (msb16(dst16)) {
-            setN(pm);
+            setN(pcpu);
         } else {
-            clearN(pm);
+            clearN(pcpu);
         }
         if (dst16 == 0) {
-            setZ(pm);
+            setZ(pcpu);
         } else {
-            clearZ(pm);
+            clearZ(pcpu);
         }
     } else {
-        uint8_t src8 = read8((pm->mode0 == 0), pm->operand0);
-        uint8_t dst8 = read8((pm->mode1 == 0), pm->operand1);
+        uint8_t src8 = read8((pcpu->mode0 == 0), pcpu->operand0);
+        uint8_t dst8 = read8((pcpu->mode1 == 0), pcpu->operand1);
         dst8 |= src8;
-        write8((pm->mode1 == 0), pm->operand1, dst8);
+        write8((pcpu->mode1 == 0), pcpu->operand1, dst8);
 
         if (msb16(dst8)) {
-            setN(pm);
+            setN(pcpu);
         } else {
-            clearN(pm);
+            clearN(pcpu);
         }
         if (dst8 == 0) {
-            setZ(pm);
+            setZ(pcpu);
         } else {
-            clearZ(pm);
+            clearZ(pcpu);
         }
     }
 
-    clearV(pm);
+    clearV(pcpu);
 }
 
-void add(machine_t *pm) {
-    if (!pm->isByte) {
-        int16_t src16 = read16((pm->mode0 == 0), pm->operand0);
-        int16_t dst16 = read16((pm->mode1 == 0), pm->operand1);
+static void add(cpu_t *pcpu) {
+    if (!pcpu->isByte) {
+        int16_t src16 = read16((pcpu->mode0 == 0), pcpu->operand0);
+        int16_t dst16 = read16((pcpu->mode1 == 0), pcpu->operand1);
         int16_t result16 = src16 + dst16;
-        write16((pm->mode1 == 0), pm->operand1, result16);
+        write16((pcpu->mode1 == 0), pcpu->operand1, result16);
 
         if (result16 < 0) {
-            setN(pm);
+            setN(pcpu);
         } else {
-            clearN(pm);
+            clearN(pcpu);
         }
         if (result16 == 0) {
-            setZ(pm);
+            setZ(pcpu);
         } else {
-            clearZ(pm);
+            clearZ(pcpu);
         }
         if (msb16(src16) == msb16(dst16) && msb16(src16) != msb16(result16)) {
-            setV(pm);
+            setV(pcpu);
         } else {
-            clearV(pm);
+            clearV(pcpu);
         }
         uint32_t c = (uint16_t)src16 + (uint16_t)dst16;
         if (c & 0x10000) {
-            setC(pm);
+            setC(pcpu);
         } else {
-            clearC(pm);
+            clearC(pcpu);
         }
     } else {
-        int8_t src8 = read8((pm->mode0 == 0), pm->operand0);
-        int8_t dst8 = read8((pm->mode1 == 0), pm->operand1);
+        int8_t src8 = read8((pcpu->mode0 == 0), pcpu->operand0);
+        int8_t dst8 = read8((pcpu->mode1 == 0), pcpu->operand1);
         int8_t result8 = src8 + dst8;
-        write8((pm->mode1 == 0), pm->operand1, result8);
+        write8((pcpu->mode1 == 0), pcpu->operand1, result8);
 
         if (result8 < 0) {
-            setN(pm);
+            setN(pcpu);
         } else {
-            clearN(pm);
+            clearN(pcpu);
         }
         if (result8 == 0) {
-            setZ(pm);
+            setZ(pcpu);
         } else {
-            clearZ(pm);
+            clearZ(pcpu);
         }
         if (msb8(src8) == msb8(dst8) && msb8(src8) != msb8(result8)) {
-            setV(pm);
+            setV(pcpu);
         } else {
-            clearV(pm);
+            clearV(pcpu);
         }
         uint16_t c = (uint8_t)src8 + (uint8_t)dst8;
         if (c & 0x100) {
-            setC(pm);
+            setC(pcpu);
         } else {
-            clearC(pm);
+            clearC(pcpu);
         }
     }
 }
 
-void sub(machine_t *pm) {
-    if (!pm->isByte) {
-        int16_t src16 = read16((pm->mode0 == 0), pm->operand0);
-        int16_t dst16 = read16((pm->mode1 == 0), pm->operand1);
+static void sub(cpu_t *pcpu) {
+    if (!pcpu->isByte) {
+        int16_t src16 = read16((pcpu->mode0 == 0), pcpu->operand0);
+        int16_t dst16 = read16((pcpu->mode1 == 0), pcpu->operand1);
         int16_t result16 = dst16 - src16;
-        write16((pm->mode1 == 0), pm->operand1, result16);
+        write16((pcpu->mode1 == 0), pcpu->operand1, result16);
 
         if (result16 < 0) {
-            setN(pm);
+            setN(pcpu);
         } else {
-            clearN(pm);
+            clearN(pcpu);
         }
         if (result16 == 0) {
-            setZ(pm);
+            setZ(pcpu);
         } else {
-            clearZ(pm);
+            clearZ(pcpu);
         }
         if (msb16(src16) != msb16(dst16) && msb16(src16) == msb16(result16)) {
-            setV(pm);
+            setV(pcpu);
         } else {
-            clearV(pm);
+            clearV(pcpu);
         }
         uint32_t c = (uint16_t)dst16 + ~(uint16_t)src16 + 1;
         if (c & 0x10000) {
-            setC(pm);
+            setC(pcpu);
         } else {
-            clearC(pm);
+            clearC(pcpu);
         }
     } else {
-        int8_t src8 = read8((pm->mode0 == 0), pm->operand0);
-        int8_t dst8 = read8((pm->mode1 == 0), pm->operand1);
+        int8_t src8 = read8((pcpu->mode0 == 0), pcpu->operand0);
+        int8_t dst8 = read8((pcpu->mode1 == 0), pcpu->operand1);
         int8_t result8 = dst8 - src8;
-        write8((pm->mode1 == 0), pm->operand1, result8);
+        write8((pcpu->mode1 == 0), pcpu->operand1, result8);
 
         if (result8 < 0) {
-            setN(pm);
+            setN(pcpu);
         } else {
-            clearN(pm);
+            clearN(pcpu);
         }
         if (result8 == 0) {
-            setZ(pm);
+            setZ(pcpu);
         } else {
-            clearZ(pm);
+            clearZ(pcpu);
         }
         if (msb8(src8) != msb8(dst8) && msb8(src8) == msb8(result8)) {
-            setV(pm);
+            setV(pcpu);
         } else {
-            clearV(pm);
+            clearV(pcpu);
         }
         uint16_t c = (uint8_t)dst8 + ~(uint8_t)src8 + 1;
         if (c & 0x100) {
-            setC(pm);
+            setC(pcpu);
         } else {
-            clearC(pm);
+            clearC(pcpu);
         }
     }
 }
 
-void mul(machine_t *pm) {
-    int32_t m = (int16_t)read16(true, pm->operand0) * (int16_t)read16((pm->mode1 == 0), pm->operand1);
+static void mul(cpu_t *pcpu) {
+    int32_t m = (int16_t)read16(true, pcpu->operand0) * (int16_t)read16((pcpu->mode1 == 0), pcpu->operand1);
     uint32_t temp = m;
-    if (pm->isEven) {
-        write16(true, pm->operand0, temp >> 16);
-        write16(true, pm->operand0 + 2, temp & 0x0000ffff);
+    if (pcpu->isEven) {
+        write16(true, pcpu->operand0, temp >> 16);
+        write16(true, pcpu->operand0 + 2, temp & 0x0000ffff);
     } else {
-        write16(true, pm->operand0, temp & 0x0000ffff);
+        write16(true, pcpu->operand0, temp & 0x0000ffff);
     }
 
     if (m < 0) {
-        setN(pm);
+        setN(pcpu);
     } else {
-        clearN(pm);
+        clearN(pcpu);
     }
     if (m == 0) {
-        setZ(pm);
+        setZ(pcpu);
     } else {
-        clearZ(pm);
+        clearZ(pcpu);
     }
-    clearV(pm);
+    clearV(pcpu);
     if (m < -(1<<15) || (1<<15) - 1 <= m) {
-        setC(pm);
+        setC(pcpu);
     } else {
-        clearC(pm);
+        clearC(pcpu);
     }
 }
 
-void mydiv(machine_t *pm) {
-    assert(pm->isEven);
+static void mydiv(cpu_t *pcpu) {
+    assert(pcpu->isEven);
 
-    int16_t reg = read16(true, pm->operand0);
-    int32_t v32 = (reg << 16) | read16(true, pm->operand0 + 2);
-    int16_t d = read16((pm->mode1 == 0), pm->operand1);
+    int16_t reg = read16(true, pcpu->operand0);
+    int32_t v32 = (reg << 16) | read16(true, pcpu->operand0 + 2);
+    int16_t d = read16((pcpu->mode1 == 0), pcpu->operand1);
 
-    clearV(pm);
-    clearC(pm);
+    clearV(pcpu);
+    clearC(pcpu);
     if (d == 0) {
-        setV(pm);
-        setC(pm);
+        setV(pcpu);
+        setC(pcpu);
         return;
     }
     if (abs(reg) > abs(d)) {
-        setV(pm);
+        setV(pcpu);
         return;
     }
 
     int16_t q = v32 / d;
     int16_t r = v32 % d;
-    write16(true, pm->operand0, q);
-    write16(true, pm->operand0 + 2, r);
+    write16(true, pcpu->operand0, q);
+    write16(true, pcpu->operand0 + 2, r);
 
     if (q < 0) {
-        setN(pm);
+        setN(pcpu);
     } else {
-        clearN(pm);
+        clearN(pcpu);
     }
     if (q == 0) {
-        setZ(pm);
+        setZ(pcpu);
     } else {
-        clearZ(pm);
+        clearZ(pcpu);
     }
 }
 
-void ash(machine_t *pm) {
-    int16_t reg = (int16_t)read16(true, pm->operand0);
-    int16_t shift6 = (int16_t)((read16((pm->mode1 == 0), pm->operand1) & 0x3f) << 10) >> 10;
+static void ash(cpu_t *pcpu) {
+    int16_t reg = (int16_t)read16(true, pcpu->operand0);
+    int16_t shift6 = (int16_t)((read16((pcpu->mode1 == 0), pcpu->operand1) & 0x3f) << 10) >> 10;
 
     int16_t result;
     bool c;
@@ -745,34 +801,34 @@ void ash(machine_t *pm) {
         result = reg >> -shift6;
         c = (int32_t)reg & (1 << (-shift6 - 1));
     }
-    write16(true, pm->operand0, result);
+    write16(true, pcpu->operand0, result);
 
     if (result < 0) {
-        setN(pm);
+        setN(pcpu);
     } else {
-        clearN(pm);
+        clearN(pcpu);
     }
     if (result == 0) {
-        setZ(pm);
+        setZ(pcpu);
     } else {
-        clearZ(pm);
+        clearZ(pcpu);
     }
     if (msb16(reg) != msb16(result)) {
-        setV(pm);
+        setV(pcpu);
     } else {
-        clearV(pm);
+        clearV(pcpu);
     }
     if (c) {
-        setC(pm);
+        setC(pcpu);
     } else {
-        clearC(pm);
+        clearC(pcpu);
     }
 }
 
-void ashc(machine_t *pm) {
-    uint16_t reg = read16(true, pm->operand0);
-    int32_t v32 = (reg << 16) | ((pm->isEven) ? read16(true, pm->operand0 + 2) : reg);
-    int16_t shift6 = (int16_t)((read16((pm->mode1 == 0), pm->operand1) & 0x3f) << 10) >> 10;
+static void ashc(cpu_t *pcpu) {
+    uint16_t reg = read16(true, pcpu->operand0);
+    int32_t v32 = (reg << 16) | ((pcpu->isEven) ? read16(true, pcpu->operand0 + 2) : reg);
+    int16_t shift6 = (int16_t)((read16((pcpu->mode1 == 0), pcpu->operand1) & 0x3f) << 10) >> 10;
 
     int32_t result;
     bool c;
@@ -786,810 +842,810 @@ void ashc(machine_t *pm) {
         result = v32 >> -shift6;
         c = v32 & (1 << (-shift6 - 1));
     }
-    if (pm->isEven) {
-        write16(true, pm->operand0, result >> 16);
-        write16(true, pm->operand0 + 2, result & 0x0000ffff);
+    if (pcpu->isEven) {
+        write16(true, pcpu->operand0, result >> 16);
+        write16(true, pcpu->operand0 + 2, result & 0x0000ffff);
     } else {
-        write16(true, pm->operand0, result & 0x0000ffff);
+        write16(true, pcpu->operand0, result & 0x0000ffff);
     }
 
     if (result < 0) {
-        setN(pm);
+        setN(pcpu);
     } else {
-        clearN(pm);
+        clearN(pcpu);
     }
     if (result == 0) {
-        setZ(pm);
+        setZ(pcpu);
     } else {
-        clearZ(pm);
+        clearZ(pcpu);
     }
     if (msb32(v32) != msb32(result)) {
-        setV(pm);
+        setV(pcpu);
     } else {
-        clearV(pm);
+        clearV(pcpu);
     }
     if (c) {
-        setC(pm);
+        setC(pcpu);
     } else {
-        clearC(pm);
+        clearC(pcpu);
     }
 }
 
-void xor(machine_t *pm) {
-    uint16_t result = read16(true, pm->operand0) ^ read16((pm->mode1 == 0), pm->operand1);
-    write16((pm->mode1 == 0), pm->operand1, result);
+static void xor(cpu_t *pcpu) {
+    uint16_t result = read16(true, pcpu->operand0) ^ read16((pcpu->mode1 == 0), pcpu->operand1);
+    write16((pcpu->mode1 == 0), pcpu->operand1, result);
 
     if (result < 0) {
-        setN(pm);
+        setN(pcpu);
     } else {
-        clearN(pm);
+        clearN(pcpu);
     }
     if (result == 0) {
-        setZ(pm);
+        setZ(pcpu);
     } else {
-        clearZ(pm);
+        clearZ(pcpu);
     }
-    clearV(pm);
+    clearV(pcpu);
 }
 
-void sob(machine_t *pm) {
-    int16_t reg = (int16_t)read16(true, pm->operand0) - 1;
-    write16(true, pm->operand0, reg);
+static void sob(cpu_t *pcpu) {
+    int16_t reg = (int16_t)read16(true, pcpu->operand0) - 1;
+    write16(true, pcpu->operand0, reg);
 
     if (reg != 0) {
-        pm->pc -= (pm->offset << 1);
+        pcpu->pc -= (pcpu->offset << 1);
     }
 }
 
-void br(machine_t *pm) {
-    pm->pc += ((int8_t)pm->offset << 1);
+static void br(cpu_t *pcpu) {
+    pcpu->pc += ((int8_t)pcpu->offset << 1);
 }
 
-void bne(machine_t *pm) {
-    if (!isZ(pm)) {
-        pm->pc += ((int8_t)pm->offset << 1);
+static void bne(cpu_t *pcpu) {
+    if (!isZ(pcpu)) {
+        pcpu->pc += ((int8_t)pcpu->offset << 1);
     }
 }
 
-void beq(machine_t *pm) {
-    if (isZ(pm)) {
-        pm->pc += ((int8_t)pm->offset << 1);
+static void beq(cpu_t *pcpu) {
+    if (isZ(pcpu)) {
+        pcpu->pc += ((int8_t)pcpu->offset << 1);
     }
 }
 
-void bge(machine_t *pm) {
-    if (!(isN(pm) ^ isV(pm))) {
-        pm->pc += ((int8_t)pm->offset << 1);
+static void bge(cpu_t *pcpu) {
+    if (!(isN(pcpu) ^ isV(pcpu))) {
+        pcpu->pc += ((int8_t)pcpu->offset << 1);
     }
 }
 
-void blt(machine_t *pm) {
-    if (isN(pm) ^ isV(pm)) {
-        pm->pc += ((int8_t)pm->offset << 1);
+static void blt(cpu_t *pcpu) {
+    if (isN(pcpu) ^ isV(pcpu)) {
+        pcpu->pc += ((int8_t)pcpu->offset << 1);
     }
 }
 
-void bgt(machine_t *pm) {
-    if (!(isZ(pm) || (isN(pm) ^ isV(pm)))) {
-        pm->pc += ((int8_t)pm->offset << 1);
+static void bgt(cpu_t *pcpu) {
+    if (!(isZ(pcpu) || (isN(pcpu) ^ isV(pcpu)))) {
+        pcpu->pc += ((int8_t)pcpu->offset << 1);
     }
 }
 
-void ble(machine_t *pm) {
-    if (isZ(pm) || (isN(pm) ^ isV(pm))) {
-        pm->pc += ((int8_t)pm->offset << 1);
+static void ble(cpu_t *pcpu) {
+    if (isZ(pcpu) || (isN(pcpu) ^ isV(pcpu))) {
+        pcpu->pc += ((int8_t)pcpu->offset << 1);
     }
 }
 
-void bpl(machine_t *pm) {
-    if (!isN(pm)) {
-        pm->pc += ((int8_t)pm->offset << 1);
+static void bpl(cpu_t *pcpu) {
+    if (!isN(pcpu)) {
+        pcpu->pc += ((int8_t)pcpu->offset << 1);
     }
 }
 
-void bmi(machine_t *pm) {
-    if (isN(pm)) {
-        pm->pc += ((int8_t)pm->offset << 1);
+static void bmi(cpu_t *pcpu) {
+    if (isN(pcpu)) {
+        pcpu->pc += ((int8_t)pcpu->offset << 1);
     }
 }
 
-void bhi(machine_t *pm) {
-    if (!(isC(pm) || isZ(pm))) {
-        pm->pc += ((int8_t)pm->offset << 1);
+static void bhi(cpu_t *pcpu) {
+    if (!(isC(pcpu) || isZ(pcpu))) {
+        pcpu->pc += ((int8_t)pcpu->offset << 1);
     }
 }
 
-void blos(machine_t *pm) {
-    if (isC(pm) || isZ(pm)) {
-        pm->pc += ((int8_t)pm->offset << 1);
+static void blos(cpu_t *pcpu) {
+    if (isC(pcpu) || isZ(pcpu)) {
+        pcpu->pc += ((int8_t)pcpu->offset << 1);
     }
 }
 
-void bvc(machine_t *pm) {
-    if (!isV(pm)) {
-        pm->pc += ((int8_t)pm->offset << 1);
+static void bvc(cpu_t *pcpu) {
+    if (!isV(pcpu)) {
+        pcpu->pc += ((int8_t)pcpu->offset << 1);
     }
 }
 
-void bvs(machine_t *pm) {
-    if (isV(pm)) {
-        pm->pc += ((int8_t)pm->offset << 1);
+static void bvs(cpu_t *pcpu) {
+    if (isV(pcpu)) {
+        pcpu->pc += ((int8_t)pcpu->offset << 1);
     }
 }
 
 // bhis
-void bcc(machine_t *pm) {
-    if (!isC(pm)) {
-        pm->pc += ((int8_t)pm->offset << 1);
+static void bcc(cpu_t *pcpu) {
+    if (!isC(pcpu)) {
+        pcpu->pc += ((int8_t)pcpu->offset << 1);
     }
 }
 
 // blo
-void bcs(machine_t *pm) {
-    if (isC(pm)) {
-        pm->pc += ((int8_t)pm->offset << 1);
+static void bcs(cpu_t *pcpu) {
+    if (isC(pcpu)) {
+        pcpu->pc += ((int8_t)pcpu->offset << 1);
     }
 }
 
-void clr(machine_t *pm) {
-    if (!pm->isByte) {
-        write16((pm->mode1 == 0), pm->operand1, 0);
+static void clr(cpu_t *pcpu) {
+    if (!pcpu->isByte) {
+        write16((pcpu->mode1 == 0), pcpu->operand1, 0);
     } else {
-        write8((pm->mode1 == 0), pm->operand1, 0);
+        write8((pcpu->mode1 == 0), pcpu->operand1, 0);
     }
 
-    clearN(pm);
-    setZ(pm);
-    clearV(pm);
-    clearC(pm);
+    clearN(pcpu);
+    setZ(pcpu);
+    clearV(pcpu);
+    clearC(pcpu);
 }
 
-void com(machine_t *pm) {
-    if (!pm->isByte) {
-        uint16_t dst16 = read16((pm->mode1 == 0), pm->operand1);
+static void com(cpu_t *pcpu) {
+    if (!pcpu->isByte) {
+        uint16_t dst16 = read16((pcpu->mode1 == 0), pcpu->operand1);
         dst16 = ~dst16;
-        write16((pm->mode1 == 0), pm->operand1, dst16);
+        write16((pcpu->mode1 == 0), pcpu->operand1, dst16);
 
         if (msb16(dst16)) {
-            setN(pm);
+            setN(pcpu);
         } else {
-            clearN(pm);
+            clearN(pcpu);
         }
         if (dst16 == 0) {
-            setZ(pm);
+            setZ(pcpu);
         } else {
-            clearZ(pm);
+            clearZ(pcpu);
         }
-        clearV(pm);
-        setC(pm);
+        clearV(pcpu);
+        setC(pcpu);
     } else {
-        uint8_t dst8 = read8((pm->mode1 == 0), pm->operand1);
+        uint8_t dst8 = read8((pcpu->mode1 == 0), pcpu->operand1);
         dst8 = ~dst8;
-        write8((pm->mode1 == 0), pm->operand1, dst8);
+        write8((pcpu->mode1 == 0), pcpu->operand1, dst8);
 
         if (msb8(dst8)) {
-            setN(pm);
+            setN(pcpu);
         } else {
-            clearN(pm);
+            clearN(pcpu);
         }
         if (dst8 == 0) {
-            setZ(pm);
+            setZ(pcpu);
         } else {
-            clearZ(pm);
+            clearZ(pcpu);
         }
-        clearV(pm);
-        setC(pm);
+        clearV(pcpu);
+        setC(pcpu);
     }
 }
 
-void inc(machine_t *pm) {
-    if (!pm->isByte) {
-        int16_t dst16 = read16((pm->mode1 == 0), pm->operand1);
+static void inc(cpu_t *pcpu) {
+    if (!pcpu->isByte) {
+        int16_t dst16 = read16((pcpu->mode1 == 0), pcpu->operand1);
         int16_t result16 = dst16 + 1;
-        write16((pm->mode1 == 0), pm->operand1, result16);
+        write16((pcpu->mode1 == 0), pcpu->operand1, result16);
 
         if (result16 < 0) {
-            setN(pm);
+            setN(pcpu);
         } else {
-            clearN(pm);
+            clearN(pcpu);
         }
         if (result16 == 0) {
-            setZ(pm);
+            setZ(pcpu);
         } else {
-            clearZ(pm);
+            clearZ(pcpu);
         }
         if (dst16 == 0x7fff) {
-            setV(pm);
+            setV(pcpu);
         } else {
-            clearV(pm);
+            clearV(pcpu);
         }
     } else {
-        int8_t dst8 = read8((pm->mode1 == 0), pm->operand1);
+        int8_t dst8 = read8((pcpu->mode1 == 0), pcpu->operand1);
         int8_t result8 = dst8 + 1;
-        write8((pm->mode1 == 0), pm->operand1, result8);
+        write8((pcpu->mode1 == 0), pcpu->operand1, result8);
 
         if (result8 < 0) {
-            setN(pm);
+            setN(pcpu);
         } else {
-            clearN(pm);
+            clearN(pcpu);
         }
         if (result8 == 0) {
-            setZ(pm);
+            setZ(pcpu);
         } else {
-            clearZ(pm);
+            clearZ(pcpu);
         }
         if (dst8 == 0x7f) {
-            setV(pm);
+            setV(pcpu);
         } else {
-            clearV(pm);
+            clearV(pcpu);
         }
     }
 }
 
-void dec(machine_t *pm) {
-    if (!pm->isByte) {
-        int16_t dst16 = read16((pm->mode1 == 0), pm->operand1);
+static void dec(cpu_t *pcpu) {
+    if (!pcpu->isByte) {
+        int16_t dst16 = read16((pcpu->mode1 == 0), pcpu->operand1);
         int16_t result16 = dst16 - 1;
-        write16((pm->mode1 == 0), pm->operand1, result16);
+        write16((pcpu->mode1 == 0), pcpu->operand1, result16);
 
         if (result16 < 0) {
-            setN(pm);
+            setN(pcpu);
         } else {
-            clearN(pm);
+            clearN(pcpu);
         }
         if (result16 == 0) {
-            setZ(pm);
+            setZ(pcpu);
         } else {
-            clearZ(pm);
+            clearZ(pcpu);
         }
         if ((uint16_t)dst16 == 0x8000) {
-            setV(pm);
+            setV(pcpu);
         } else {
-            clearV(pm);
+            clearV(pcpu);
         }
     } else {
-        int8_t dst8 = read8((pm->mode1 == 0), pm->operand1);
+        int8_t dst8 = read8((pcpu->mode1 == 0), pcpu->operand1);
         int8_t result8 = dst8 - 1;
-        write8((pm->mode1 == 0), pm->operand1, result8);
+        write8((pcpu->mode1 == 0), pcpu->operand1, result8);
 
         if (result8 < 0) {
-            setN(pm);
+            setN(pcpu);
         } else {
-            clearN(pm);
+            clearN(pcpu);
         }
         if (result8 == 0) {
-            setZ(pm);
+            setZ(pcpu);
         } else {
-            clearZ(pm);
+            clearZ(pcpu);
         }
         if ((uint8_t)dst8 == 0x80) {
-            setV(pm);
+            setV(pcpu);
         } else {
-            clearV(pm);
+            clearV(pcpu);
         }
     }
 }
 
-void neg(machine_t *pm) {
-    if (!pm->isByte) {
-        int16_t dst16 = read16((pm->mode1 == 0), pm->operand1);
+static void neg(cpu_t *pcpu) {
+    if (!pcpu->isByte) {
+        int16_t dst16 = read16((pcpu->mode1 == 0), pcpu->operand1);
         int16_t result16 = -dst16;
-        write16((pm->mode1 == 0), pm->operand1, result16);
+        write16((pcpu->mode1 == 0), pcpu->operand1, result16);
 
         if (result16 < 0) {
-            setN(pm);
+            setN(pcpu);
         } else {
-            clearN(pm);
+            clearN(pcpu);
         }
         if (result16 == 0) {
-            setZ(pm);
+            setZ(pcpu);
         } else {
-            clearZ(pm);
+            clearZ(pcpu);
         }
         if ((uint16_t)result16 == 0x8000) {
-            setV(pm);
+            setV(pcpu);
         } else {
-            clearV(pm);
+            clearV(pcpu);
         }
         if (result16 == 0) {
-            clearC(pm);
+            clearC(pcpu);
         } else {
-            setC(pm);
+            setC(pcpu);
         }
     } else {
-        int8_t dst8 = read8((pm->mode1 == 0), pm->operand1);
+        int8_t dst8 = read8((pcpu->mode1 == 0), pcpu->operand1);
         int8_t result8 = -dst8;
-        write8((pm->mode1 == 0), pm->operand1, result8);
+        write8((pcpu->mode1 == 0), pcpu->operand1, result8);
 
         if (result8 < 0) {
-            setN(pm);
+            setN(pcpu);
         } else {
-            clearN(pm);
+            clearN(pcpu);
         }
         if (result8 == 0) {
-            setZ(pm);
+            setZ(pcpu);
         } else {
-            clearZ(pm);
+            clearZ(pcpu);
         }
         if ((uint8_t)result8 == 0x80) {
-            setV(pm);
+            setV(pcpu);
         } else {
-            clearV(pm);
+            clearV(pcpu);
         }
         if (result8 == 0) {
-            clearC(pm);
+            clearC(pcpu);
         } else {
-            setC(pm);
+            setC(pcpu);
         }
     }
 }
 
-void adc(machine_t *pm) {
-    if (!pm->isByte) {
-        int16_t dst16 = read16((pm->mode1 == 0), pm->operand1);
-        int16_t result16 = dst16 + (isC(pm) ? 1 : 0);
-        write16((pm->mode1 == 0), pm->operand1, result16);
+static void adc(cpu_t *pcpu) {
+    if (!pcpu->isByte) {
+        int16_t dst16 = read16((pcpu->mode1 == 0), pcpu->operand1);
+        int16_t result16 = dst16 + (isC(pcpu) ? 1 : 0);
+        write16((pcpu->mode1 == 0), pcpu->operand1, result16);
 
         if (result16 < 0) {
-            setN(pm);
+            setN(pcpu);
         } else {
-            clearN(pm);
+            clearN(pcpu);
         }
         if (result16 == 0) {
-            setZ(pm);
+            setZ(pcpu);
         } else {
-            clearZ(pm);
+            clearZ(pcpu);
         }
-        if (dst16 == 0x7fff && isC(pm)) {
-            setV(pm);
+        if (dst16 == 0x7fff && isC(pcpu)) {
+            setV(pcpu);
         } else {
-            clearV(pm);
+            clearV(pcpu);
         }
-        if ((uint16_t)dst16 == 0xffff && isC(pm)) {
-            setC(pm);
+        if ((uint16_t)dst16 == 0xffff && isC(pcpu)) {
+            setC(pcpu);
         } else {
-            clearC(pm);
+            clearC(pcpu);
         }
     } else {
-        int8_t dst8 = read8((pm->mode1 == 0), pm->operand1);
-        int8_t result8 = dst8 + (isC(pm) ? 1 : 0);
-        write8((pm->mode1 == 0), pm->operand1, result8);
+        int8_t dst8 = read8((pcpu->mode1 == 0), pcpu->operand1);
+        int8_t result8 = dst8 + (isC(pcpu) ? 1 : 0);
+        write8((pcpu->mode1 == 0), pcpu->operand1, result8);
 
         if (result8 < 0) {
-            setN(pm);
+            setN(pcpu);
         } else {
-            clearN(pm);
+            clearN(pcpu);
         }
         if (result8 == 0) {
-            setZ(pm);
+            setZ(pcpu);
         } else {
-            clearZ(pm);
+            clearZ(pcpu);
         }
-        if (dst8 == 0x7f && isC(pm)) {
-            setV(pm);
+        if (dst8 == 0x7f && isC(pcpu)) {
+            setV(pcpu);
         } else {
-            clearV(pm);
+            clearV(pcpu);
         }
-        if ((uint8_t)dst8 == 0xff && isC(pm)) {
-            setC(pm);
+        if ((uint8_t)dst8 == 0xff && isC(pcpu)) {
+            setC(pcpu);
         } else {
-            clearC(pm);
+            clearC(pcpu);
         }
     }
 }
 
-void sbc(machine_t *pm) {
-    if (!pm->isByte) {
-        int16_t dst16 = read16((pm->mode1 == 0), pm->operand1);
-        int16_t result16 = dst16 - (isC(pm) ? 1 : 0);
-        write16((pm->mode1 == 0), pm->operand1, result16);
+static void sbc(cpu_t *pcpu) {
+    if (!pcpu->isByte) {
+        int16_t dst16 = read16((pcpu->mode1 == 0), pcpu->operand1);
+        int16_t result16 = dst16 - (isC(pcpu) ? 1 : 0);
+        write16((pcpu->mode1 == 0), pcpu->operand1, result16);
 
         if (result16 < 0) {
-            setN(pm);
+            setN(pcpu);
         } else {
-            clearN(pm);
+            clearN(pcpu);
         }
         if (result16 == 0) {
-            setZ(pm);
+            setZ(pcpu);
         } else {
-            clearZ(pm);
+            clearZ(pcpu);
         }
         if ((uint16_t)dst16 == 0x8000) {
-            setV(pm);
+            setV(pcpu);
         } else {
-            clearV(pm);
+            clearV(pcpu);
         }
-        if (dst16 == 0 && isC(pm)) {
-            clearC(pm);
+        if (dst16 == 0 && isC(pcpu)) {
+            clearC(pcpu);
         } else {
-            setC(pm);
+            setC(pcpu);
         }
     } else {
-        int8_t dst8 = read8((pm->mode1 == 0), pm->operand1);
-        int8_t result8 = dst8 - (isC(pm) ? 1 : 0);
-        write8((pm->mode1 == 0), pm->operand1, result8);
+        int8_t dst8 = read8((pcpu->mode1 == 0), pcpu->operand1);
+        int8_t result8 = dst8 - (isC(pcpu) ? 1 : 0);
+        write8((pcpu->mode1 == 0), pcpu->operand1, result8);
 
         if (result8 < 0) {
-            setN(pm);
+            setN(pcpu);
         } else {
-            clearN(pm);
+            clearN(pcpu);
         }
         if (result8 == 0) {
-            setZ(pm);
+            setZ(pcpu);
         } else {
-            clearZ(pm);
+            clearZ(pcpu);
         }
         if ((uint8_t)dst8 == 0x80) {
-            setV(pm);
+            setV(pcpu);
         } else {
-            clearV(pm);
+            clearV(pcpu);
         }
-        if (dst8 == 0 && isC(pm)) {
-            clearC(pm);
+        if (dst8 == 0 && isC(pcpu)) {
+            clearC(pcpu);
         } else {
-            setC(pm);
+            setC(pcpu);
         }
     }
 }
 
-void tst(machine_t *pm) {
-    if (!pm->isByte) {
-        int16_t dst16 = read16((pm->mode1 == 0), pm->operand1);
+static void tst(cpu_t *pcpu) {
+    if (!pcpu->isByte) {
+        int16_t dst16 = read16((pcpu->mode1 == 0), pcpu->operand1);
 
         if (dst16 < 0) {
-            setN(pm);
+            setN(pcpu);
         } else {
-            clearN(pm);
+            clearN(pcpu);
         }
         if (dst16 == 0) {
-            setZ(pm);
+            setZ(pcpu);
         } else {
-            clearZ(pm);
+            clearZ(pcpu);
         }
     } else {
-        int8_t dst8 = read8((pm->mode1 == 0), pm->operand1);
+        int8_t dst8 = read8((pcpu->mode1 == 0), pcpu->operand1);
 
         if (dst8 < 0) {
-            setN(pm);
+            setN(pcpu);
         } else {
-            clearN(pm);
+            clearN(pcpu);
         }
         if (dst8 == 0) {
-            setZ(pm);
+            setZ(pcpu);
         } else {
-            clearZ(pm);
+            clearZ(pcpu);
         }
     }
 
-    clearV(pm);
-    clearC(pm);
+    clearV(pcpu);
+    clearC(pcpu);
 }
 
-void ror(machine_t *pm) {
+static void ror(cpu_t *pcpu) {
     bool c;
-    if (!pm->isByte) {
-        int16_t dst16 = (int16_t)read16((pm->mode1 == 0), pm->operand1);
+    if (!pcpu->isByte) {
+        int16_t dst16 = (int16_t)read16((pcpu->mode1 == 0), pcpu->operand1);
 
         c = dst16 & 1;
         int16_t result16 = dst16 >> 1;
-        if (isC(pm)) {
+        if (isC(pcpu)) {
             result16 |= 0x8000;
         } else {
             result16 &= 0x7fff;
         }
-        write16((pm->mode1 == 0), pm->operand1, result16);
+        write16((pcpu->mode1 == 0), pcpu->operand1, result16);
 
         if (result16 < 0) {
-            setN(pm);
+            setN(pcpu);
         } else {
-            clearN(pm);
+            clearN(pcpu);
         }
         if (result16 == 0) {
-            setZ(pm);
+            setZ(pcpu);
         } else {
-            clearZ(pm);
+            clearZ(pcpu);
         }
     } else {
-        int8_t dst8 = (int8_t)read8((pm->mode1 == 0), pm->operand1);
+        int8_t dst8 = (int8_t)read8((pcpu->mode1 == 0), pcpu->operand1);
 
         c = dst8 & 1;
         int8_t result8 = dst8 >> 1;
-        if (isC(pm)) {
+        if (isC(pcpu)) {
             result8 |= 0x80;
         } else {
             result8 &= 0x7f;
         }
-        write8((pm->mode1 == 0), pm->operand1, result8);
+        write8((pcpu->mode1 == 0), pcpu->operand1, result8);
 
         if (result8 < 0) {
-            setN(pm);
+            setN(pcpu);
         } else {
-            clearN(pm);
+            clearN(pcpu);
         }
         if (result8 == 0) {
-            setZ(pm);
+            setZ(pcpu);
         } else {
-            clearZ(pm);
+            clearZ(pcpu);
         }
     }
 
-    if (isN(pm) ^ c) {
-        setV(pm);
+    if (isN(pcpu) ^ c) {
+        setV(pcpu);
     } else {
-        clearV(pm);
+        clearV(pcpu);
     }
     if (c) {
-        setC(pm);
+        setC(pcpu);
     } else {
-        clearC(pm);
+        clearC(pcpu);
     }
 }
 
-void rol(machine_t *pm) {
+static void rol(cpu_t *pcpu) {
     bool c;
-    if (!pm->isByte) {
-        int16_t dst16 = (int16_t)read16((pm->mode1 == 0), pm->operand1);
+    if (!pcpu->isByte) {
+        int16_t dst16 = (int16_t)read16((pcpu->mode1 == 0), pcpu->operand1);
 
         c = msb16(dst16);
         int16_t result16 = dst16 << 1;
-        if (isC(pm)) {
+        if (isC(pcpu)) {
             result16 |= 1;
         } else {
             result16 &= 0xfffe;
         }
-        write16((pm->mode1 == 0), pm->operand1, result16);
+        write16((pcpu->mode1 == 0), pcpu->operand1, result16);
 
         if (result16 < 0) {
-            setN(pm);
+            setN(pcpu);
         } else {
-            clearN(pm);
+            clearN(pcpu);
         }
         if (result16 == 0) {
-            setZ(pm);
+            setZ(pcpu);
         } else {
-            clearZ(pm);
+            clearZ(pcpu);
         }
     } else {
-        int8_t dst8 = (int8_t)read8((pm->mode1 == 0), pm->operand1);
+        int8_t dst8 = (int8_t)read8((pcpu->mode1 == 0), pcpu->operand1);
 
         c = msb8(dst8);
         int8_t result8 = dst8 << 1;
-        if (isC(pm)) {
+        if (isC(pcpu)) {
             result8 |= 1;
         } else {
             result8 &= 0xfe;
         }
-        write8((pm->mode1 == 0), pm->operand1, result8);
+        write8((pcpu->mode1 == 0), pcpu->operand1, result8);
 
         if (result8 < 0) {
-            setN(pm);
+            setN(pcpu);
         } else {
-            clearN(pm);
+            clearN(pcpu);
         }
         if (result8 == 0) {
-            setZ(pm);
+            setZ(pcpu);
         } else {
-            clearZ(pm);
+            clearZ(pcpu);
         }
     }
 
-    if (isN(pm) ^ c) {
-        setV(pm);
+    if (isN(pcpu) ^ c) {
+        setV(pcpu);
     } else {
-        clearV(pm);
+        clearV(pcpu);
     }
     if (c) {
-        setC(pm);
+        setC(pcpu);
     } else {
-        clearC(pm);
+        clearC(pcpu);
     }
 }
 
-void asr(machine_t *pm) {
+static void asr(cpu_t *pcpu) {
     bool c;
-    if (!pm->isByte) {
-        int16_t dst16 = (int16_t)read16((pm->mode1 == 0), pm->operand1);
+    if (!pcpu->isByte) {
+        int16_t dst16 = (int16_t)read16((pcpu->mode1 == 0), pcpu->operand1);
 
         c = dst16 & 1;
         int16_t result16 = dst16 >> 1;
-        write16((pm->mode1 == 0), pm->operand1, result16);
+        write16((pcpu->mode1 == 0), pcpu->operand1, result16);
 
         if (result16 < 0) {
-            setN(pm);
+            setN(pcpu);
         } else {
-            clearN(pm);
+            clearN(pcpu);
         }
         if (result16 == 0) {
-            setZ(pm);
+            setZ(pcpu);
         } else {
-            clearZ(pm);
+            clearZ(pcpu);
         }
     } else {
-        int8_t dst8 = (int8_t)read8((pm->mode1 == 0), pm->operand1);
+        int8_t dst8 = (int8_t)read8((pcpu->mode1 == 0), pcpu->operand1);
 
         c = dst8 & 1;
         int8_t result8 = dst8 >> 1;
-        write8((pm->mode1 == 0), pm->operand1, result8);
+        write8((pcpu->mode1 == 0), pcpu->operand1, result8);
 
         if (result8 < 0) {
-            setN(pm);
+            setN(pcpu);
         } else {
-            clearN(pm);
+            clearN(pcpu);
         }
         if (result8 == 0) {
-            setZ(pm);
+            setZ(pcpu);
         } else {
-            clearZ(pm);
+            clearZ(pcpu);
         }
     }
 
-    if (isN(pm) ^ c) {
-        setV(pm);
+    if (isN(pcpu) ^ c) {
+        setV(pcpu);
     } else {
-        clearV(pm);
+        clearV(pcpu);
     }
     if (c) {
-        setC(pm);
+        setC(pcpu);
     } else {
-        clearC(pm);
+        clearC(pcpu);
     }
 }
 
-void asl(machine_t *pm) {
+static void asl(cpu_t *pcpu) {
     bool c;
-    if (!pm->isByte) {
-        int16_t dst16 = (int16_t)read16((pm->mode1 == 0), pm->operand1);
+    if (!pcpu->isByte) {
+        int16_t dst16 = (int16_t)read16((pcpu->mode1 == 0), pcpu->operand1);
 
         c = msb16(dst16);
         int16_t result16 = dst16 << 1;
-        write16((pm->mode1 == 0), pm->operand1, result16);
+        write16((pcpu->mode1 == 0), pcpu->operand1, result16);
 
         if (result16 < 0) {
-            setN(pm);
+            setN(pcpu);
         } else {
-            clearN(pm);
+            clearN(pcpu);
         }
         if (result16 == 0) {
-            setZ(pm);
+            setZ(pcpu);
         } else {
-            clearZ(pm);
+            clearZ(pcpu);
         }
     } else {
-        int8_t dst8 = (int8_t)read8((pm->mode1 == 0), pm->operand1);
+        int8_t dst8 = (int8_t)read8((pcpu->mode1 == 0), pcpu->operand1);
 
         c = msb8(dst8);
         int8_t result8 = dst8 << 1;
-        write8((pm->mode1 == 0), pm->operand1, result8);
+        write8((pcpu->mode1 == 0), pcpu->operand1, result8);
 
         if (result8 < 0) {
-            setN(pm);
+            setN(pcpu);
         } else {
-            clearN(pm);
+            clearN(pcpu);
         }
         if (result8 == 0) {
-            setZ(pm);
+            setZ(pcpu);
         } else {
-            clearZ(pm);
+            clearZ(pcpu);
         }
     }
 
-    if (isN(pm) ^ c) {
-        setV(pm);
+    if (isN(pcpu) ^ c) {
+        setV(pcpu);
     } else {
-        clearV(pm);
+        clearV(pcpu);
     }
     if (c) {
-        setC(pm);
+        setC(pcpu);
     } else {
-        clearC(pm);
+        clearC(pcpu);
     }
 }
 
-void sxt(machine_t *pm) {
+static void sxt(cpu_t *pcpu) {
     uint16_t result = 0;
-    if (isN(pm)) {
+    if (isN(pcpu)) {
         result = 0xffff;
     }
-    write16((pm->mode1 == 0), pm->operand1, result);
+    write16((pcpu->mode1 == 0), pcpu->operand1, result);
 
-    if (!isN(pm)) {
-        setZ(pm);
+    if (!isN(pcpu)) {
+        setZ(pcpu);
     }
 }
 
-void myswab(machine_t *pm) {
-    uint16_t dst16 = read16((pm->mode1 == 0), pm->operand1);
+static void myswab(cpu_t *pcpu) {
+    uint16_t dst16 = read16((pcpu->mode1 == 0), pcpu->operand1);
     uint16_t result16 = (dst16 << 8) | (dst16 >> 8);
-    write16((pm->mode1 == 0), pm->operand1, result16);
+    write16((pcpu->mode1 == 0), pcpu->operand1, result16);
 
     if (result16 & 0x80) {
-        setN(pm);
+        setN(pcpu);
     } else {
-        clearN(pm);
+        clearN(pcpu);
     }
     if ((result16 & 0xff) == 0) {
-        setZ(pm);
+        setZ(pcpu);
     } else {
-        clearZ(pm);
+        clearZ(pcpu);
     }
-    clearV(pm);
-    clearC(pm);
+    clearV(pcpu);
+    clearC(pcpu);
 }
 
-void jmp(machine_t *pm) {
-    if (pm->mode1 == 0) {
+static void jmp(cpu_t *pcpu) {
+    if (pcpu->mode1 == 0) {
         assert(0); // illegal instruction
     }
 
-    uint16_t addr = (pm->operand1 - pm->virtualMemory) & 0xffff;
+    uint16_t addr = pcpu->mmuR2V(pcpu->ctx, pcpu->operand1);
     if (addr & 1) {
         assert(0); // boundary error
     }
 
-    pm->pc = addr;
+    pcpu->pc = addr;
 }
 
-void jsr(machine_t *pm) {
-    uint16_t addr = (pm->operand1 - pm->virtualMemory) & 0xffff;
-    uint16_t reg = read16(true, pm->operand0);
-    pm->sp -= 2;
-    write16(false, &pm->virtualMemory[pm->sp], reg);
-    write16(true, pm->operand0, pm->pc);
-    pm->pc = addr;
+static void jsr(cpu_t *pcpu) {
+    uint16_t addr = pcpu->mmuR2V(pcpu->ctx, pcpu->operand1);
+    uint16_t reg = read16(true, pcpu->operand0);
+    pcpu->sp -= 2;
+    write16(false, pcpu->mmuV2R(pcpu->ctx, pcpu->sp), reg);
+    write16(true, pcpu->operand0, pcpu->pc);
+    pcpu->pc = addr;
 }
 
-void rts(machine_t *pm) {
-    pm->pc = read16(true, pm->operand1);
-    uint16_t temp = read16(false, &pm->virtualMemory[pm->sp]);
-    pm->sp += 2;
-    write16(true, pm->operand1, temp);
+static void rts(cpu_t *pcpu) {
+    pcpu->pc = read16(true, pcpu->operand1);
+    uint16_t temp = read16(false, pcpu->mmuV2R(pcpu->ctx, pcpu->sp));
+    pcpu->sp += 2;
+    write16(true, pcpu->operand1, temp);
 }
 
-void sys(machine_t *pm) {
-    if (pm->syscallID == 0) {
+static void sys(cpu_t *pcpu) {
+    if (pcpu->syscallID == 0) {
         // indir
-        uint16_t addr = fetch(pm);
+        uint16_t addr = fetch(pcpu);
 
-        uint16_t oldpc = pm->pc;
+        uint16_t oldpc = pcpu->pc;
         {
-            pm->pc = addr;
-            pm->bin = fetch(pm);
-            pm->syscallID = pm->bin & 0x3f;
-            assert(pm->bin - pm->syscallID == 0104400);
-            mysyscall(pm);
+            pcpu->pc = addr;
+            pcpu->bin = fetch(pcpu);
+            pcpu->syscallID = pcpu->bin & 0x3f;
+            assert(pcpu->bin - pcpu->syscallID == 0104400);
+            pcpu->syscallHook(pcpu->ctx);
         }
         // syscall exec(11) overwrites pc!
-        if (pm->syscallID == 11) {
-            if (pm->pc != 0xffff) {
-                pm->pc = oldpc;
-                assert(isC(pm));
+        if (pcpu->syscallID == 11) {
+            if (pcpu->pc != 0xffff) {
+                pcpu->pc = oldpc;
+                assert(isC(pcpu));
             }
         } else {
-            pm->pc = oldpc;
+            pcpu->pc = oldpc;
         }
         // TODO: In syscall fork(2) parent overwrites pc!
-        assert(pm->syscallID != 2);
+        assert(pcpu->syscallID != 2);
     } else {
-        mysyscall(pm);
+        pcpu->syscallHook(pcpu->ctx);
     }
 }
 
-void myclearset(machine_t *pm) {
-    bool isSet = pm->bin & 0x10;
-    bool N = pm->bin & 8;
-    bool Z = pm->bin & 4;
-    bool V = pm->bin & 2;
-    bool C = pm->bin & 1;
+static void myclearset(cpu_t *pcpu) {
+    bool isSet = pcpu->bin & 0x10;
+    bool N = pcpu->bin & 8;
+    bool Z = pcpu->bin & 4;
+    bool V = pcpu->bin & 2;
+    bool C = pcpu->bin & 1;
 
     if (isSet) {
-        if (N) setN(pm);
-        if (Z) setZ(pm);
-        if (V) setV(pm);
-        if (C) setC(pm);
+        if (N) setN(pcpu);
+        if (Z) setZ(pcpu);
+        if (V) setV(pcpu);
+        if (C) setC(pcpu);
     } else {
-        if (N) clearN(pm);
-        if (Z) clearZ(pm);
-        if (V) clearV(pm);
-        if (C) clearC(pm);
+        if (N) clearN(pcpu);
+        if (Z) clearZ(pcpu);
+        if (V) clearV(pcpu);
+        if (C) clearC(pcpu);
     }
 }
