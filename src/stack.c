@@ -18,7 +18,6 @@ uint16_t pushArgs(cpu_t *pcpu, int argc, uint8_t *args, size_t argsbytes) {
         uint16_t vaddr = pcpu->mmuR2V(pcpu->ctx, pbuf);
         write16(false, rsp, vaddr);
         rsp += 2;
-        //printf("/ argv[%d]: %s\n", i, (const char *)pa);
         do {
             *pbuf++ = *pa;
         } while (*pa++ != '\0');
@@ -29,7 +28,6 @@ uint16_t pushArgs(cpu_t *pcpu, int argc, uint8_t *args, size_t argsbytes) {
         *pbuf = '\0'; // alignment
     }
 
-    // TODO: NULL?
     // -1
     write16(false, rsp, 0xffff);
 

@@ -1602,32 +1602,7 @@ static void rts(cpu_t *pcpu) {
 }
 
 static void sys(cpu_t *pcpu) {
-    if (pcpu->syscallID == 0) {
-        // indir
-        uint16_t addr = fetch(pcpu);
-
-        uint16_t oldpc = pcpu->pc;
-        {
-            pcpu->pc = addr;
-            pcpu->bin = fetch(pcpu);
-            pcpu->syscallID = pcpu->bin & 0x3f;
-            assert(pcpu->bin - pcpu->syscallID == 0104400);
-            pcpu->syscallHook(pcpu->ctx);
-        }
-        // syscall exec(11) overwrites pc!
-        if (pcpu->syscallID == 11) {
-            if (pcpu->pc != 0xffff) {
-                pcpu->pc = oldpc;
-                assert(isC(pcpu));
-            }
-        } else {
-            pcpu->pc = oldpc;
-        }
-        // TODO: In syscall fork(2) parent overwrites pc!
-        assert(pcpu->syscallID != 2);
-    } else {
-        pcpu->syscallHook(pcpu->ctx);
-    }
+    pcpu->syscallHook(pcpu->ctx);
 }
 
 static void myclearset(cpu_t *pcpu) {
