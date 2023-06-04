@@ -1,13 +1,13 @@
-TARGET_EXEC ?= pdp11
+TARGET_LIB ?= libpdp11.a
 
 BUILD_DIR ?= ./build
 SRC_DIRS ?= ./src
 
-SRCS := $(shell find $(SRC_DIRS) -name *.cpp -or -name *.c -or -name *.s)
+SRCS := $(shell find -L $(SRC_DIRS) -name *.cpp -or -name *.c -or -name *.s)
 OBJS := $(SRCS:%=$(BUILD_DIR)/%.o)
 DEPS := $(OBJS:.o=.d)
 
-INC_DIRS := $(shell find $(SRC_DIRS) -type d)
+INC_DIRS := $(shell find -L $(SRC_DIRS) -type d)
 INC_FLAGS := $(addprefix -I,$(INC_DIRS))
 
 # pkgconfig
@@ -22,8 +22,8 @@ CFLAGS += -Wall --std=c99 -O3
 CXXFLAGS += -Wall --std=c++11 -O3
 
 
-$(BUILD_DIR)/$(TARGET_EXEC): $(OBJS)
-	$(CC) $(OBJS) -o $@ $(LDFLAGS)
+$(BUILD_DIR)/$(TARGET_LIB): $(OBJS)
+	$(AR) $(ARFLAGS) $@ $(OBJS)
 
 # assembly
 $(BUILD_DIR)/%.s.o: %.s
@@ -49,4 +49,3 @@ clean:
 -include $(DEPS)
 
 MKDIR_P ?= mkdir -p
-
