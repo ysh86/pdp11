@@ -53,6 +53,13 @@ void init(
     pcpu->psw = 0;
 }
 
+uint16_t getSP(cpu_t *pcpu) {
+    return pcpu->sp;
+}
+uint16_t getPC(cpu_t *pcpu) {
+    return pcpu->pc;
+}
+
 uint16_t fetch(cpu_t *pcpu) {
     pcpu->addr = pcpu->pc;
     pcpu->bin = read16(false, pcpu->mmuV2R(pcpu->ctx, pcpu->pc));

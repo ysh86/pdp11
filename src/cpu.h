@@ -4,6 +4,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#define SIZE_OF_VECTORS 0
+
 struct instruction_tag;
 #ifndef _INSTRUCTION_T_
 #define _INSTRUCTION_T_
@@ -132,6 +134,9 @@ void init(
     syscall_string_t syscallStringHook,
     uint16_t sp, uint16_t pc);
 uint16_t pushArgs(cpu_t *pcpu, int argc, uint8_t *args, size_t argsbytes);
+
+uint16_t getSP(cpu_t *pcpu);
+uint16_t getPC(cpu_t *pcpu);
 
 uint16_t fetch(cpu_t *pcpu);
 void decode(cpu_t *pcpu);
