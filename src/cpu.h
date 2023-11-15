@@ -133,7 +133,6 @@ void init(
     syscall_t syscallHook,
     syscall_string_t syscallStringHook,
     uint16_t sp, uint16_t pc);
-uint16_t pushArgs(cpu_t *pcpu, int argc, uint8_t *args, size_t argsbytes);
 
 uint16_t getSP(cpu_t *pcpu);
 uint16_t getPC(cpu_t *pcpu);
