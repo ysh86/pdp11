@@ -111,7 +111,7 @@ void disasm(cpu_t *pcpu) {
         tabs = "\t\t";
     } else if (pcpu->inst->operandNum == 6) {
         // syscall
-        pcpu->syscallStringHook(pcpu->ctx, operand1, sizeof(operand1), pcpu->syscallID);
+        syscallString16(pcpu->ctx, operand1, sizeof(operand1), pcpu->syscallID);
         sep = "";
         tabs = "\t\t";
     } else if (pcpu->inst->operandNum == 0) {
@@ -150,7 +150,7 @@ void disasm(cpu_t *pcpu) {
             pcpu->bin = fetch(pcpu);
             pcpu->syscallID = pcpu->bin & 0x3f;
             assert(pcpu->bin - pcpu->syscallID == 0104400);
-            pcpu->syscallStringHook(pcpu->ctx, operand1, sizeof(operand1), pcpu->syscallID);
+            syscallString16(pcpu->ctx, operand1, sizeof(operand1), pcpu->syscallID);
         }
         pcpu->pc = oldpc;
 

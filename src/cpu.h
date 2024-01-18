@@ -16,7 +16,6 @@ typedef void * context_t;
 typedef uint8_t *(*mmu_v2r_t)(context_t ctx, uint32_t vaddr);
 typedef uint32_t (*mmu_r2v_t)(context_t ctx, uint8_t *raddr);
 typedef void (*syscall_t)(context_t ctx);
-typedef void (*syscall_string_t)(context_t ctx, char *str, size_t size, uint8_t id);
 
 struct cpu_tag {
     // machine
@@ -24,7 +23,6 @@ struct cpu_tag {
     mmu_v2r_t mmuV2R;
     mmu_r2v_t mmuR2V;
     syscall_t syscallHook;
-    syscall_string_t syscallStringHook;
 
     // regs
     uint16_t r0;
@@ -131,7 +129,6 @@ void init(
     mmu_v2r_t v2r,
     mmu_r2v_t r2v,
     syscall_t syscallHook,
-    syscall_string_t syscallStringHook,
     uint16_t sp, uint16_t pc);
 
 uint16_t getSP(cpu_t *pcpu);

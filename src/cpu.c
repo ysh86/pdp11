@@ -22,14 +22,12 @@ void init(
     mmu_v2r_t v2r,
     mmu_r2v_t r2v,
     syscall_t syscallHook,
-    syscall_string_t syscallStringHook,
     uint16_t sp, uint16_t pc) {
     // machine
     pcpu->ctx = ctx;
     pcpu->mmuV2R = v2r;
     pcpu->mmuR2V = r2v;
     pcpu->syscallHook = syscallHook;
-    pcpu->syscallStringHook = syscallStringHook;
 
     // set reg ptr
     pcpu->r[0] = &pcpu->r0;
