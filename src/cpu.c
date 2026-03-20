@@ -19,6 +19,7 @@ char *toRegName[] = {
 void init(
     cpu_t *pcpu,
     context_t ctx,
+    mmu_v2r_t isWritable,
     mmu_v2r_t v2r,
     mmu_r2v_t r2v,
     syscall_t syscallHook,

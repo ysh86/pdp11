@@ -6,6 +6,8 @@
 #include "inst.h"
 #include "util.h"
 
+void syscallString16(context_t p, char *str, size_t size, uint8_t id);
+
 static void operand_string(cpu_t *pcpu, char *str, size_t size, uint8_t mode, uint8_t reg) {
     int16_t word = 0;
     const char *rn = toRegName[reg];
